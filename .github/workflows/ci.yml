@@ -28,7 +28,7 @@ jobs:
       
       - name: Run linter
         working-directory: ./frontend
-        run: npx next lint
+        run: npm run lint
       
       - name: Run type check
         working-directory: ./frontend
