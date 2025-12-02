@@ -82,7 +82,7 @@ repos:
     hooks:
       - id: eslint
         name: Lint frontend code with ESLint
-        entry: bash -c 'cd frontend && npx eslint --fix'
+        entry: bash -c 'cd frontend && npx eslint --fix "${@#frontend/}"' --
         language: system
         files: ^frontend/.*\.[jt]sx?$
         types: [file]
