@@ -31,7 +31,7 @@ jobs:
         run: npm run type-check
       
       - name: Run tests with coverage
-        run: npm run test:coverage -- --coverageThreshold='{"global":{"branches":70,"functions":70,"lines":70,"statements":70}}'
+        run: npm run test -- --coverage --coverageThreshold='{"global":{"branches":70,"functions":70,"lines":70,"statements":70}}'
       
       - name: Build verification
         run: npm run build
