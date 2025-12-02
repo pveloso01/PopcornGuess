@@ -1,0 +1,28 @@
+[run]
+source = .
+omit =
+    */migrations/*
+    */tests/*
+    */venv/*
+    */.venv/*
+    */node_modules/*
+    */manage.py
+    */settings.py
+    */wsgi.py
+    */asgi.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod
+precision = 2
+show_missing = True
+skip_covered = False
+fail_under = 80
+

@@ -30,8 +30,19 @@ jobs:
       - name: Run type check
         run: npm run type-check
       
-      - name: Run tests
-        run: npm run test
+      - name: Run tests with coverage
+        run: npm run test:coverage
+      
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(npm run test:coverage:check 2>&1 | grep -oP 'All files\s+\|\s+\d+\.\d+%' | grep -oP '\d+\.\d+' | head -1 || echo "0")
+          THRESHOLD=70
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "❌ Coverage $COVERAGE% is below threshold of $THRESHOLD%"
+            exit 1
+          else
+            echo "✅ Coverage $COVERAGE% meets threshold of $THRESHOLD%"
+          fi
       
       - name: Build verification
         run: npm run build
@@ -77,9 +88,19 @@ jobs:
         run: |
           mypy .
       
-      - name: Run tests
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov coverage
+      
+      - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/popcornguess_test
         run: |
-          pytest
+          pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
