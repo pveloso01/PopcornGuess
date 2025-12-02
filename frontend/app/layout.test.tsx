@@ -1,4 +1,3 @@
-import React from 'react';
 import RootLayout from './layout';
 
 // Mock next/font/google
@@ -61,4 +60,3 @@ describe('RootLayout', () => {
     expect(bodyElement.props.children).toEqual(children);
   });
 });
-

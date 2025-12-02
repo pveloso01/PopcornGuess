@@ -27,11 +27,12 @@ exclude = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
+testpaths = ["backend"]
+python_files = ["test_*.py", "*_test.py", "tests.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--cov=. --cov-report=term-missing --cov-report=html --cov-fail-under=80"
+addopts = "--cov=backend --cov-report=term-missing --cov-report=xml --cov-fail-under=80"
+DJANGO_SETTINGS_MODULE = "popcornguess.settings"
 
 [tool.coverage.run]
 source = ["."]
