@@ -63,3 +63,14 @@ show_missing = true
 skip_covered = false
 fail_under = 80
 
+[tool.bandit]
+exclude_dirs = ["*/tests/*", "*/migrations/*", "*/venv/*", "*/.venv/*"]
+skips = ["B101", "B601"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+skip_gitignore = true
+known_django = "django"
+known_first_party = ["popcornguess", "analytics", "quizzes", "users"]
+sections = ["FUTURE", "STDLIB", "DJANGO", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]

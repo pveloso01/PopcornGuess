@@ -33,11 +33,17 @@ PopcornGuess is a web-based daily trivia game where players guess movies and TV 
 git clone https://github.com/yourusername/PopcornGuess.git
 cd PopcornGuess
 
+# Install pre-commit hooks (recommended for contributors)
+pip install pre-commit
+pre-commit install
+pre-commit install --hook-type commit-msg
+
 # Backend setup
 cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+pip install -r requirements-dev.txt  # For development
 python manage.py migrate
 python manage.py runserver
 
@@ -62,6 +68,7 @@ docker-compose up
 ## 📅 Development Roadmap
 
 ### Milestone 1: MVP Foundation
+
 - Project setup and infrastructure
 - Core quiz gameplay
 - Anonymous user system
@@ -69,52 +76,61 @@ docker-compose up
 - Landing page and navigation
 
 ### Milestone 2: Game Modes & Content
+
 - Additional game modes (Blitz, Practice, Competitive)
 - Content management system
 - Leaderboard system
 
 ### Milestone 3: User Accounts & Social Features
+
 - User authentication
 - User profiles
 - Friend system and challenges
 
 ### Milestone 4: Launch Preparation
+
 - Testing and QA
 - Content preparation
 - Analytics and monitoring
 - Documentation and legal pages
 
 ### Milestone 5: Post-Launch Growth
+
 - Performance optimization and scaling
 - Feature enhancements (streak freeze, hints, archive)
 - Community features and forums
 - Notifications system
 
 ### Milestone 6: Monetization Phase 1
+
 - Advertising integration
 - Freemium foundation
 - Premium account system
 - Payment processing
 
 ### Milestone 7: Mobile App
+
 - iOS and Android native apps
 - Mobile-specific features
 - Push notifications
 - App store submissions
 
 ### Milestone 8: Monetization Phase 2
+
 - Subscription model
 - Sponsorships and partnerships
 - In-app purchases
 - Advanced monetization features
 
 ### Milestone 9: Advanced Features & Scaling
+
 - Multiplayer and tournament modes
 - Internationalization
 - Advanced analytics and A/B testing
 - Infrastructure scaling
 
 ### Milestone 10: Long-Term Sustainability
+
 - Community growth programs
 - Content expansion
 - Platform expansion and APIs
@@ -124,13 +140,27 @@ See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for complete roadmap.
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our contributing guidelines (coming soon).
+We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
+
+### Quick Start for Contributors
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Install pre-commit hooks: `pip install pre-commit && pre-commit install`
+3. Create a feature branch (`git checkout -b feat/amazing-feature`)
+4. Make your changes (hooks will auto-format on commit)
+5. Write tests and ensure coverage meets thresholds
+6. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
+7. Push to the branch (`git push origin feat/amazing-feature`)
+8. Open a Pull Request
+
+### Code Quality
+
+We use automated tools to maintain code quality:
+
+- **Python**: Black, Flake8, isort, mypy, Bandit
+- **JavaScript/TypeScript**: Prettier, ESLint
+- **Git**: Pre-commit hooks auto-format and lint on every commit
+- **Testing**: 80% coverage for backend, 70% for frontend
 
 ## 🎨 Design Principles
 
@@ -153,6 +183,7 @@ Current focus: Setting up project infrastructure and core gameplay mechanics.
 ## 🙏 Acknowledgments
 
 Inspired by:
+
 - [Wordle](https://www.nytimes.com/games/wordle/index.html) - Daily word puzzle
 - [LoLdle](https://loldle.net/) - League of Legends daily guessing game
 - [Narutodle](https://mangadle.net/) - Naruto character guessing game
@@ -160,10 +191,10 @@ Inspired by:
 ## 📧 Contact
 
 **Devs:**
-- Pedro Veloso, pedrovelosofernandes@outlook.com
+
+- Pedro Veloso, <pedrovelosofernandes@outlook.com>
 - Rodrigo Figueiredo
-  
+
 ---
 
 **Note**: This project is in active development. Features and roadmap are subject to change based on user feedback and market conditions.
-
