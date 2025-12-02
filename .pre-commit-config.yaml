@@ -78,19 +78,14 @@ repos:
         args: ['--write']
 
   # JavaScript/TypeScript Frontend - ESLint
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.17.0
+  - repo: local
     hooks:
       - id: eslint
         name: Lint frontend code with ESLint
+        entry: bash -c 'cd frontend && npx eslint --fix'
+        language: system
         files: ^frontend/.*\.[jt]sx?$
         types: [file]
-        args: ['--fix']
-        additional_dependencies:
-          - eslint@^9
-          - eslint-config-next@16.0.6
-          - '@typescript-eslint/parser'
-          - '@typescript-eslint/eslint-plugin'
 
   # Git commit message linting
   - repo: https://github.com/commitizen-tools/commitizen
