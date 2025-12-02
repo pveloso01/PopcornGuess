@@ -159,8 +159,10 @@ Inspired by:
 
 ## 📧 Contact
 
-[Contact information to be added]
-
+**Devs:**
+- Pedro Veloso, pedrovelosofernandes@outlook.com
+- Rodrigo Figueiredo
+  
 ---
 
 **Note**: This project is in active development. Features and roadmap are subject to change based on user feedback and market conditions.
