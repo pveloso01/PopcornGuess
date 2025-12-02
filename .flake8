@@ -11,9 +11,4 @@ exclude =
     node_modules,
     migrations,
     .pytest_cache
-per-file-ignores =
-    */admin.py:F401
-    */models.py:F401
-    */views.py:F401
-    */tests.py:F401
 
