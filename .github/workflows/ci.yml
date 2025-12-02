@@ -28,7 +28,7 @@ jobs:
       
       - name: Run linter
         working-directory: ./frontend
-        run: npm run lint
+        run: npx next lint
       
       - name: Run type check
         working-directory: ./frontend
@@ -75,6 +75,7 @@ jobs:
         working-directory: ./backend
         run: |
           pip install -r requirements.txt
+          pip install flake8 black mypy pytest pytest-cov coverage
       
       - name: Run linter
         working-directory: ./backend
@@ -86,11 +87,6 @@ jobs:
         working-directory: ./backend
         run: |
           mypy .
-      
-      - name: Install test dependencies
-        working-directory: ./backend
-        run: |
-          pip install pytest pytest-cov coverage
       
       - name: Run tests with coverage
         working-directory: ./backend
