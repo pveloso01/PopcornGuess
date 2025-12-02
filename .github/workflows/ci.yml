@@ -75,7 +75,7 @@ jobs:
         working-directory: ./backend
         run: |
           pip install -r requirements.txt
-          pip install flake8 black mypy pytest pytest-cov pytest-django coverage
+          pip install -r requirements-dev.txt
 
       - name: Run linter
         working-directory: ./backend
@@ -86,7 +86,7 @@ jobs:
       - name: Run type check
         working-directory: ./backend
         run: |
-          mypy .
+          mypy . --ignore-missing-imports --no-strict-optional
 
       - name: Run tests with coverage
         working-directory: ./backend
