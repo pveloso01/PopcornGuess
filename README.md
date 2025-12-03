@@ -62,7 +62,7 @@ docker compose up --build
 
 - Frontend: <http://localhost:3000>
 - Backend API: <http://localhost:8000>
-- PostgreSQL: localhost:5432
+- PostgreSQL: localhost:5433 (mapped to avoid conflicts with local PostgreSQL)
 
 **Hot Reload:** Both frontend and backend support hot reload. Changes to your code will automatically trigger reloads without needing to rebuild containers.
 
