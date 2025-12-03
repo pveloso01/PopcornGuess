@@ -181,9 +181,9 @@ REST_FRAMEWORK = {
 
 # Only enable browsable API in DEBUG mode
 if DEBUG:
-    REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"].append(
-        "rest_framework.renderers.BrowsableAPIRenderer"
-    )
+    renderer_classes = REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"]
+    assert isinstance(renderer_classes, list)  # type: ignore[misc]
+    renderer_classes.append("rest_framework.renderers.BrowsableAPIRenderer")
 
 # CORS configuration
 CORS_ALLOWED_ORIGINS = os.getenv(
