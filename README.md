@@ -16,6 +16,8 @@ PopcornGuess is a web-based daily trivia game where players guess movies and TV 
 ## 📋 Documentation
 
 - **[IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)** - Comprehensive implementation plan with labels, milestones, epics, issues, and effort estimates
+- **[DOCKER_SETUP.md](./DOCKER_SETUP.md)** - Detailed Docker development environment guide
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contribution guidelines and workflow
 
 ## 🚀 Quick Start
 
