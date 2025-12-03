@@ -155,6 +155,11 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Custom User Model
+# IMPORTANT: Must be set before the first migration
+# https://docs.djangoproject.com/en/4.2/topics/auth/customizing/#substituting-a-custom-user-model
+AUTH_USER_MODEL = "users.User"
+
 # REST Framework configuration
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
@@ -162,7 +167,23 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+    ],
+    # Add authentication classes for future use
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
 }
+
+# Only enable browsable API in DEBUG mode
+if DEBUG:
+    renderer_classes = REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"]
+    assert isinstance(renderer_classes, list)  # type: ignore[misc]
+    renderer_classes.append("rest_framework.renderers.BrowsableAPIRenderer")
 
 # CORS configuration
 CORS_ALLOWED_ORIGINS = os.getenv(
@@ -170,3 +191,104 @@ CORS_ALLOWED_ORIGINS = os.getenv(
 ).split(",")
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Security Settings
+# These are configured with environment-aware defaults
+# https://docs.djangoproject.com/en/4.2/topics/security/
+
+# CSRF Settings
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SECURE = not DEBUG  # Use secure cookies in production
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# Session Settings
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = not DEBUG  # Use secure cookies in production
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_AGE = 1209600  # 2 weeks in seconds
+
+# Security Headers (for production)
+if not DEBUG:
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# Logging Configuration
+# https://docs.djangoproject.com/en/4.2/topics/logging/
+
+# Ensure logs directory exists
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": (
+                "{levelname} {asctime} {module} {process:d} {thread:d} {message}"
+            ),
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "filters": {
+        "require_debug_true": {
+            "()": "django.utils.log.RequireDebugTrue",
+        },
+        "require_debug_false": {
+            "()": "django.utils.log.RequireDebugFalse",
+        },
+    },
+    "handlers": {
+        "console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+        "file": {
+            "level": "WARNING",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOGS_DIR / "django.log",
+            "maxBytes": 1024 * 1024 * 10,  # 10 MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "popcornguess": {
+            "handlers": ["console", "file"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+# Email Configuration (for future use)
+# https://docs.djangoproject.com/en/4.2/topics/email/
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@popcornguess.com")

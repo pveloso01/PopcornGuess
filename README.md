@@ -2,7 +2,7 @@
 
 A daily movie and TV trivia quiz platform inspired by Wordle, LoLdle, and Narutodle. Test your knowledge of films and television shows with a new challenge every day!
 
-## 🎯 Project Overview
+## 🎯 About
 
 PopcornGuess is a web-based daily trivia game where players guess movies and TV shows based on various clues (quotes, images, emojis, etc.). The platform emphasizes:
 
@@ -13,191 +13,67 @@ PopcornGuess is a web-based daily trivia game where players guess movies and TV 
 - **Social Sharing**: Share results without spoilers (Wordle-style)
 - **Community Features**: Leaderboards, stats, and friend challenges
 
-## 📋 Documentation
-
-- **[IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)** - Comprehensive implementation plan with labels, milestones, epics, issues, and effort estimates
-- **[DOCKER_SETUP.md](./DOCKER_SETUP.md)** - Detailed Docker development environment guide
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contribution guidelines and workflow
-
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- Node.js 20+
-- Python 3.11+
-- PostgreSQL 15+
-- Docker (optional, for containerized development)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/PopcornGuess.git
-cd PopcornGuess
-
-
-### Docker Setup (Recommended)
-
-The easiest way to get started is using Docker Compose, which sets up all services (frontend, backend, and database) with hot reload enabled.
+### Using Docker (Recommended)
 
 ```bash
 # Copy environment variables
 cp .env.example .env
 
-# Build and start all services
+# Start all services
 docker compose up
-
-# Or run in detached mode
-docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Stop services
-docker compose down
-
-# Rebuild after dependency changes
-docker compose up --build
 ```
 
 **Services:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- PostgreSQL: localhost:5433
 
-- Frontend: <http://localhost:3000>
-- Backend API: <http://localhost:8000>
-- PostgreSQL: localhost:5433 (mapped to avoid conflicts with local PostgreSQL)
+### Manual Setup
 
-**Hot Reload:** Both frontend and backend support hot reload. Changes to your code will automatically trigger reloads without needing to rebuild containers.
-
-### Manual Setup (Without Docker)
-
-If you prefer to run services locally without Docker:
-
-```bash
-# Install pre-commit hooks (recommended for contributors)
-pip install pre-commit
-pre-commit install
-pre-commit install --hook-type commit-msg
-
-# Backend setup
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt  # For development
-
-# Set up PostgreSQL database (ensure PostgreSQL is running)
-# Update DATABASE_URL in .env or use default settings
-python manage.py migrate
-python manage.py runserver
-
-# Frontend setup (in another terminal)
-cd frontend
-npm install
-npm run dev
-```
+See [Development Guide](./docs/DEVELOPMENT.md) for detailed setup instructions.
 
 ## 🏗️ Tech Stack
 
-- **Frontend**: Next.js 14+ (App Router), TypeScript, Tailwind CSS
+- **Frontend**: Next.js 14+, TypeScript, Tailwind CSS
 - **Backend**: Django 4.2+, Django REST Framework, PostgreSQL
-- **Deployment**: TBD (Vercel/Netlify for frontend, Railway/Render for backend)
+- **Deployment**: TBD
 
-## 📅 Development Roadmap
+## 📚 Documentation
 
-### Milestone 1: MVP Foundation
-
-- Project setup and infrastructure
-- Core quiz gameplay
-- Anonymous user system
-- Social sharing
-- Landing page and navigation
-
-### Milestone 2: Game Modes & Content
-
-- Additional game modes (Blitz, Practice, Competitive)
-- Content management system
-- Leaderboard system
-
-### Milestone 3: User Accounts & Social Features
-
-- User authentication
-- User profiles
-- Friend system and challenges
-
-### Milestone 4: Launch Preparation
-
-- Testing and QA
-- Content preparation
-- Analytics and monitoring
-- Documentation and legal pages
-
-### Milestone 5: Post-Launch Growth
-
-- Performance optimization and scaling
-- Feature enhancements (streak freeze, hints, archive)
-- Community features and forums
-- Notifications system
-
-### Milestone 6: Monetization Phase 1
-
-- Advertising integration
-- Freemium foundation
-- Premium account system
-- Payment processing
-
-### Milestone 7: Mobile App
-
-- iOS and Android native apps
-- Mobile-specific features
-- Push notifications
-- App store submissions
-
-### Milestone 8: Monetization Phase 2
-
-- Subscription model
-- Sponsorships and partnerships
-- In-app purchases
-- Advanced monetization features
-
-### Milestone 9: Advanced Features & Scaling
-
-- Multiplayer and tournament modes
-- Internationalization
-- Advanced analytics and A/B testing
-- Infrastructure scaling
-
-### Milestone 10: Long-Term Sustainability
-
-- Community growth programs
-- Content expansion
-- Platform expansion and APIs
-- Partner integrations
-
-See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for complete roadmap.
+- **[Development Guide](./docs/DEVELOPMENT.md)** - Setup and development workflows
+- **[Contributing](./docs/CONTRIBUTING.md)** - How to contribute to the project
+- **[API Reference](./docs/API.md)** - REST API endpoints
+- **[User Model](./docs/USER_MODEL.md)** - Custom user model design
+- **[Docker Setup](./docs/DOCKER_SETUP.md)** - Docker environment details
+- **[Implementation Plan](./docs/IMPLEMENTATION_PLAN.md)** - Project roadmap
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
+We welcome contributions! Here's how to get started:
 
-### Quick Start for Contributors
+1. Read the [Contributing Guide](./docs/CONTRIBUTING.md)
+2. Fork the repository
+3. Create a feature branch
+4. Make your changes
+5. Submit a pull request
 
-1. Fork the repository
-2. Install pre-commit hooks: `pip install pre-commit && pre-commit install`
-3. Create a feature branch (`git checkout -b feat/amazing-feature`)
-4. Make your changes (hooks will auto-format on commit)
-5. Write tests and ensure coverage meets thresholds
-6. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
-7. Push to the branch (`git push origin feat/amazing-feature`)
-8. Open a Pull Request
+Quick setup for contributors:
 
-### Code Quality
+```bash
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
 
-We use automated tools to maintain code quality:
+# See docs/DEVELOPMENT.md for complete setup
+```
 
-- **Python**: Black, Flake8, isort, mypy, Bandit
-- **JavaScript/TypeScript**: Prettier, ESLint
-- **Git**: Pre-commit hooks auto-format and lint on every commit
-- **Testing**: 80% coverage for backend, 70% for frontend
+## 📊 Project Status
+
+🚧 **In Development** - MVP Foundation phase
+
+Current focus: Setting up project infrastructure and core gameplay mechanics.
 
 ## 🎨 Design Principles
 
@@ -205,13 +81,6 @@ We use automated tools to maintain code quality:
 - **Accessibility**: Mobile-first, responsive design
 - **Performance**: Fast load times and smooth interactions
 - **Engagement**: Habit-forming through streaks and daily challenges
-- **Community**: Social features that encourage sharing and competition
-
-## 📊 Project Status
-
-🚧 **In Development** - MVP Foundation phase
-
-Current focus: Setting up project infrastructure and core gameplay mechanics.
 
 ## 📄 License
 
@@ -220,18 +89,16 @@ Current focus: Setting up project infrastructure and core gameplay mechanics.
 ## 🙏 Acknowledgments
 
 Inspired by:
-
-- [Wordle](https://www.nytimes.com/games/wordle/index.html) - Daily word puzzle
-- [LoLdle](https://loldle.net/) - League of Legends daily guessing game
-- [Narutodle](https://mangadle.net/) - Naruto character guessing game
+- [Wordle](https://www.nytimes.com/games/wordle/index.html)
+- [LoLdle](https://loldle.net/)
+- [Narutodle](https://mangadle.net/)
 
 ## 📧 Contact
 
-**Devs:**
-
-- Pedro Veloso, <pedrovelosofernandes@outlook.com>
+**Developers:**
+- Pedro Veloso - pedrovelosofernandes@outlook.com
 - Rodrigo Figueiredo
 
 ---
 
-**Note**: This project is in active development. Features and roadmap are subject to change based on user feedback and market conditions.
+**Note**: This project is in active development. Features and roadmap are subject to change.
