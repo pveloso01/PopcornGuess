@@ -1,6 +1,7 @@
 """
 Serializers for the User model.
 """
+
 from rest_framework import serializers
 
 from .models import User
@@ -48,7 +49,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "last_name",
         ]
 
-    def validate(self, attrs):
+    def validate(self, attrs):  # type: ignore[no-untyped-def,override]
         """
         Validate that passwords match.
         """
@@ -58,7 +59,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             )
         return attrs
 
-    def create(self, validated_data):
+    def create(self, validated_data):  # type: ignore[no-untyped-def,override]
         """
         Create a new user with encrypted password.
         """
@@ -92,7 +93,7 @@ class PasswordChangeSerializer(serializers.Serializer):
     new_password = serializers.CharField(required=True, write_only=True, min_length=8)
     new_password_confirm = serializers.CharField(required=True, write_only=True)
 
-    def validate(self, attrs):
+    def validate(self, attrs):  # type: ignore[no-untyped-def,override]
         """
         Validate that new passwords match.
         """
@@ -102,7 +103,7 @@ class PasswordChangeSerializer(serializers.Serializer):
             )
         return attrs
 
-    def validate_old_password(self, value):
+    def validate_old_password(self, value: str) -> str:
         """
         Validate that the old password is correct.
         """

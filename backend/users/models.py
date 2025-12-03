@@ -9,7 +9,9 @@ class UserManager(BaseUserManager):
     for authentication instead of username.
     """
 
-    def create_user(self, email, password=None, **extra_fields):
+    def create_user(  # type: ignore[no-untyped-def,override]
+        self, email: str, password: str | None = None, **extra_fields
+    ):
         """
         Create and save a regular user with the given email and password.
         """
@@ -21,7 +23,9 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password=None, **extra_fields):
+    def create_superuser(  # type: ignore[no-untyped-def,override]
+        self, email: str, password: str | None = None, **extra_fields
+    ):
         """
         Create and save a superuser with the given email and password.
         """
@@ -52,7 +56,9 @@ class User(AbstractUser):
         _("username"),
         max_length=150,
         unique=True,
-        help_text=_("Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only."),
+        help_text=_(
+            "Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only."
+        ),
         error_messages={
             "unique": _("A user with that username already exists."),
         },
@@ -67,7 +73,7 @@ class User(AbstractUser):
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]  # Username required when creating superuser
 
-    objects = UserManager()
+    objects = UserManager()  # type: ignore[assignment]
 
     class Meta:
         verbose_name = _("user")
@@ -75,19 +81,19 @@ class User(AbstractUser):
         db_table = "users"
         ordering = ["-date_joined"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.username} ({self.email})"
 
-    def get_full_name(self):
+    def get_full_name(self) -> str:
         """
         Return the first_name plus the last_name, with a space in between.
         """
         full_name = f"{self.first_name} {self.last_name}".strip()
         return full_name or self.email
 
-    def get_short_name(self):
+    def get_short_name(self) -> str:
         """
         Return the short name for the user.
         For gaming, this returns the username/gamertag.
         """
-        return self.username
+        return str(self.username)
