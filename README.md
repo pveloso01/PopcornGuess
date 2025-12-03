@@ -43,19 +43,19 @@ The easiest way to get started is using Docker Compose, which sets up all servic
 cp .env.example .env
 
 # Build and start all services
-docker-compose up
+docker compose up
 
 # Or run in detached mode
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Rebuild after dependency changes
-docker-compose up --build
+docker compose up --build
 ```
 
 **Services:**
