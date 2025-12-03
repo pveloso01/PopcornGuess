@@ -16,6 +16,8 @@ PopcornGuess is a web-based daily trivia game where players guess movies and TV 
 ## 📋 Documentation
 
 - **[IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)** - Comprehensive implementation plan with labels, milestones, epics, issues, and effort estimates
+- **[DOCKER_SETUP.md](./DOCKER_SETUP.md)** - Detailed Docker development environment guide
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contribution guidelines and workflow
 
 ## 🚀 Quick Start
 
@@ -33,6 +35,44 @@ PopcornGuess is a web-based daily trivia game where players guess movies and TV 
 git clone https://github.com/yourusername/PopcornGuess.git
 cd PopcornGuess
 
+
+### Docker Setup (Recommended)
+
+The easiest way to get started is using Docker Compose, which sets up all services (frontend, backend, and database) with hot reload enabled.
+
+```bash
+# Copy environment variables
+cp .env.example .env
+
+# Build and start all services
+docker compose up
+
+# Or run in detached mode
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+
+# Rebuild after dependency changes
+docker compose up --build
+```
+
+**Services:**
+
+- Frontend: <http://localhost:3000>
+- Backend API: <http://localhost:8000>
+- PostgreSQL: localhost:5433 (mapped to avoid conflicts with local PostgreSQL)
+
+**Hot Reload:** Both frontend and backend support hot reload. Changes to your code will automatically trigger reloads without needing to rebuild containers.
+
+### Manual Setup (Without Docker)
+
+If you prefer to run services locally without Docker:
+
+```bash
 # Install pre-commit hooks (recommended for contributors)
 pip install pre-commit
 pre-commit install
@@ -44,6 +84,9 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt  # For development
+
+# Set up PostgreSQL database (ensure PostgreSQL is running)
+# Update DATABASE_URL in .env or use default settings
 python manage.py migrate
 python manage.py runserver
 
@@ -51,12 +94,6 @@ python manage.py runserver
 cd frontend
 npm install
 npm run dev
-```
-
-### Docker Setup
-
-```bash
-docker-compose up
 ```
 
 ## 🏗️ Tech Stack
