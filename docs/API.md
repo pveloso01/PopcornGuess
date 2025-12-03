@@ -1,14 +1,22 @@
 # API Documentation
 
+**📚 Interactive Documentation**: For detailed, interactive API documentation, see:
+
+- **[OpenAPI Documentation](./OPENAPI.md)** - Complete guide to API docs
+- **Swagger UI**: <http://localhost:8000/api/docs/> - Try out endpoints
+- **ReDoc**: <http://localhost:8000/api/redoc/> - Beautiful documentation
+- **OpenAPI Schema**: <http://localhost:8000/api/schema/> - Raw schema
+
 ## Base URL
 
-```
+```text
 http://localhost:8000/api/v1/
 ```
 
 ## Versioning
 
 The API uses URL path versioning (e.g., `/api/v1/`, `/api/v2/`). This approach:
+
 - Maintains backward compatibility
 - Allows multiple API versions to coexist
 - Provides clear migration paths for clients
@@ -28,14 +36,15 @@ Content-Type: application/json
 {
   "email": "user@example.com",
   "username": "gamertag123",
-  "password": "securepass123",
-  "password_confirm": "securepass123",
+  "password": "securepass123",  // pragma: allowlist secret
+  "password_confirm": "securepass123",  // pragma: allowlist secret
   "first_name": "John",
   "last_name": "Doe"
 }
 ```
 
 **Response:** `201 Created`
+
 ```json
 {
   "id": 1,
@@ -57,6 +66,7 @@ Authorization: Session
 ```
 
 **Response:** `200 OK`
+
 ```json
 {
   "id": 1,
@@ -93,13 +103,14 @@ Authorization: Session
 Content-Type: application/json
 
 {
-  "old_password": "oldpass123",
-  "new_password": "newpass123",
-  "new_password_confirm": "newpass123"
+  "old_password": "oldpass123",  // pragma: allowlist secret
+  "new_password": "newpass123",  // pragma: allowlist secret
+  "new_password_confirm": "newpass123"  // pragma: allowlist secret
 }
 ```
 
 **Response:** `200 OK`
+
 ```json
 {
   "detail": "Password changed successfully."
@@ -127,6 +138,7 @@ Content-Type: application/json
 ## Future Endpoints
 
 Planned endpoints for future development:
+
 - Quiz endpoints (`/api/v1/quizzes/`)
 - Analytics endpoints (`/api/v1/analytics/`)
 - Leaderboard endpoints (`/api/v1/leaderboards/`)

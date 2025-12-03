@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
+    "drf_spectacular",
     "quizzes",
     "users",
     "analytics",
@@ -177,6 +178,8 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
     ],
+    # OpenAPI 3 schema generation
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 # Only enable browsable API in DEBUG mode
@@ -292,3 +295,81 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@popcornguess.com")
+
+# OpenAPI / Spectacular Configuration
+# https://drf-spectacular.readthedocs.io/en/latest/settings.html
+SPECTACULAR_SETTINGS = {
+    "TITLE": "PopcornGuess API",
+    "DESCRIPTION": (
+        "Daily movie and TV trivia quiz platform API. "
+        "Test your knowledge of films and television shows with various game modes, "
+        "track your progress, compete on leaderboards, and challenge friends!"
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # API Versioning
+    "SCHEMA_PATH_PREFIX": r"/api/v[0-9]",
+    "SCHEMA_PATH_PREFIX_TRIM": True,
+    # Authentication
+    "AUTHENTICATION_WHITELIST": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    # Contact & License
+    "CONTACT": {
+        "name": "PopcornGuess Team",
+        "email": "pedrovelosofernandes@outlook.com",
+    },
+    "LICENSE": {
+        "name": "MIT License",
+    },
+    # Tags & Grouping
+    "TAGS": [
+        {"name": "users", "description": "User management and authentication"},
+        {"name": "quizzes", "description": "Quiz gameplay and content"},
+        {"name": "analytics", "description": "Statistics and leaderboards"},
+    ],
+    # UI Customization
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": False,
+        "filter": True,
+        "tryItOutEnabled": True,
+    },
+    "REDOC_UI_SETTINGS": {
+        "hideDownloadButton": False,
+        "expandResponses": "200,201",
+        "pathInMiddlePanel": True,
+    },
+    # Schema Generation
+    "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {
+        "ValidationErrorEnum": "drf_spectacular.types.ErrorResponse",
+    },
+    # Preprocessing
+    "PREPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.preprocess_exclude_path_format",
+    ],
+    # Postprocessing for custom modifications
+    "POSTPROCESSING_HOOKS": (
+        [
+            "drf_spectacular.contrib.djangorestframework_camel_case.camelize_serializer_fields",  # noqa
+        ]
+        if "djangorestframework_camel_case" in INSTALLED_APPS
+        else []
+    ),
+    # Schema extensions
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "cookieAuth": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "sessionid",
+            }
+        }
+    },
+    "SECURITY": [{"cookieAuth": []}],
+    # Disable auto-gen'd error responses (we'll document them explicitly)
+    "COMPONENT_NO_READ_ONLY_REQUIRED": True,
+}

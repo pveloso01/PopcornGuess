@@ -23,6 +23,7 @@ Follow this order to get started:
 ### Getting Started
 
 **[DEVELOPMENT.md](./DEVELOPMENT.md)**
+
 - Prerequisites and installation
 - Running tests
 - Code quality tools
@@ -30,6 +31,7 @@ Follow this order to get started:
 - Common issues and solutions
 
 **[DOCKER_SETUP.md](./DOCKER_SETUP.md)**
+
 - Docker Compose setup
 - Service configuration
 - Development workflows with Docker
@@ -38,21 +40,32 @@ Follow this order to get started:
 ### Architecture & Design
 
 **[USER_MODEL.md](./USER_MODEL.md)**
+
 - Custom user model rationale
 - Email vs username (authentication vs display)
 - Model structure and fields
 - Usage examples
 
 **[API.md](./API.md)**
+
 - API versioning strategy
 - Authentication methods
 - Endpoint documentation
 - Request/response examples
 - Error handling
 
+**[OPENAPI.md](./OPENAPI.md)**
+
+- Interactive API documentation (Swagger/ReDoc)
+- OpenAPI schema generation
+- Client SDK generation
+- Schema customization guide
+- Best practices for API documentation
+
 ### Contributing
 
 **[CONTRIBUTING.md](./CONTRIBUTING.md)**
+
 - Development workflow
 - Code quality standards
 - Testing requirements
@@ -62,6 +75,7 @@ Follow this order to get started:
 ### Planning
 
 **[IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)**
+
 - Project milestones
 - Feature epics
 - Task breakdown
@@ -73,18 +87,22 @@ Follow this order to get started:
 ### Common Commands
 
 \`\`\`bash
+
 # Backend
+
 cd backend
 python manage.py runserver
 python manage.py test
 python manage.py migrate
 
 # Frontend
+
 cd frontend
 npm run dev
 npm test
 
 # Docker
+
 docker compose up
 docker compose down
 docker compose logs -f
