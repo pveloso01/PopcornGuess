@@ -96,6 +96,48 @@ export const api = {
     },
   },
 
+  // Progress endpoints
+  progress: {
+    start: async (quizId: number, deviceId?: string) => {
+      return apiRequest('/progress/start/', {
+        method: 'POST',
+        deviceId,
+        body: JSON.stringify({ quiz_id: quizId }),
+      });
+    },
+
+    submit: async (
+      progressId: number,
+      answer: {
+        questionId: number;
+        answer: string;
+        isCorrect: boolean;
+        attemptsUsed: number;
+      },
+      deviceId?: string
+    ) => {
+      return apiRequest('/progress/submit/', {
+        method: 'POST',
+        deviceId,
+        body: JSON.stringify({
+          progress_id: progressId,
+          answer,
+        }),
+      });
+    },
+
+    complete: async (progressId: number, timeTakenSeconds: number, deviceId?: string) => {
+      return apiRequest('/progress/complete/', {
+        method: 'POST',
+        deviceId,
+        body: JSON.stringify({
+          progress_id: progressId,
+          time_taken_seconds: timeTakenSeconds,
+        }),
+      });
+    },
+  },
+
   // Quiz endpoints
   quizzes: {
     getDaily: async (deviceId?: string) => {

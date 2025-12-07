@@ -243,3 +243,165 @@ def get_user_stats(request):  # type: ignore[no-untyped-def]
 
     serializer = UserStatsSerializer(stats)
     return Response(serializer.data)
+
+
+@extend_schema(
+    summary="Start quiz session",
+    description="Initiate a new quiz session and create progress tracking.",
+    tags=["progress"],
+    responses={
+        201: UserProgressSerializer,
+        400: OpenApiResponse(description="Bad request"),
+        404: OpenApiResponse(description="Quiz not found"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def start_quiz_session(request):  # type: ignore[no-untyped-def]
+    """Start a new quiz session."""
+    from quizzes.models import Quiz
+
+    quiz_id = request.data.get("quiz_id")
+    if not quiz_id:
+        return Response(
+            {"detail": "quiz_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        quiz = Quiz.objects.get(id=quiz_id)
+    except Quiz.DoesNotExist:
+        return Response(
+            {"detail": "Quiz not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # Get user (authenticated or anonymous)
+    anonymous_user = None
+    user = None
+
+    if request.user.is_authenticated:
+        user = request.user
+    else:
+        device_id = request.headers.get("X-Device-ID")
+        if not device_id:
+            return Response(
+                {"detail": "Device ID required for anonymous users."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
+        except AnonymousUser.DoesNotExist:
+            return Response(
+                {"detail": "Anonymous user not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    # Create progress record
+    progress = UserProgress.objects.create(
+        anonymous_user=anonymous_user,
+        user=user,
+        quiz=quiz,
+        total_questions=quiz.questions.count(),
+    )
+
+    serializer = UserProgressSerializer(progress)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    summary="Submit quiz progress",
+    description="Update progress after each answer.",
+    tags=["progress"],
+    responses={
+        200: UserProgressSerializer,
+        404: OpenApiResponse(description="Progress not found"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def submit_quiz_progress(request):  # type: ignore[no-untyped-def]
+    """Submit answer and update progress."""
+    progress_id = request.data.get("progress_id")
+    answer_data = request.data.get("answer")
+
+    if not progress_id:
+        return Response(
+            {"detail": "progress_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        progress = UserProgress.objects.get(id=progress_id)
+    except UserProgress.DoesNotExist:
+        return Response(
+            {"detail": "Progress not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # Update answers list
+    if answer_data:
+        answers = progress.answers or []
+        answers.append(answer_data)
+        progress.answers = answers
+        progress.attempts_used += 1
+        if answer_data.get("is_correct"):
+            progress.score += 1
+        progress.save()
+
+    serializer = UserProgressSerializer(progress)
+    return Response(serializer.data)
+
+
+@extend_schema(
+    summary="Complete quiz session",
+    description="Finalize quiz completion and update stats.",
+    tags=["progress"],
+    responses={
+        200: UserProgressSerializer,
+        404: OpenApiResponse(description="Progress not found"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def complete_quiz_session(request):  # type: ignore[no-untyped-def]
+    """Complete quiz and update related stats."""
+    progress_id = request.data.get("progress_id")
+    time_taken = request.data.get("time_taken_seconds")
+
+    if not progress_id:
+        return Response(
+            {"detail": "progress_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        progress = UserProgress.objects.get(id=progress_id)
+    except UserProgress.DoesNotExist:
+        return Response(
+            {"detail": "Progress not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # Mark as completed
+    progress.complete()
+    if time_taken:
+        progress.time_taken_seconds = time_taken
+        progress.save()
+
+    # Update user stats
+    if progress.user:
+        stats, _ = UserStats.objects.get_or_create(user=progress.user)
+    elif progress.anonymous_user:
+        stats, _ = UserStats.objects.get_or_create(
+            anonymous_user=progress.anonymous_user
+        )
+    else:
+        stats = None
+
+    if stats:
+        stats.update_from_progress(progress)
+
+    serializer = UserProgressSerializer(progress)
+    return Response(serializer.data)

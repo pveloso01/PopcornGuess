@@ -37,4 +37,20 @@ urlpatterns = [
         views.get_user_stats,
         name="stats-me",
     ),
+    # Progress endpoints
+    path(
+        "progress/start/",
+        views.start_quiz_session,
+        name="progress-start",
+    ),
+    path(
+        "progress/submit/",
+        views.submit_quiz_progress,
+        name="progress-submit",
+    ),
+    path(
+        "progress/complete/",
+        views.complete_quiz_session,
+        name="progress-complete",
+    ),
 ]
