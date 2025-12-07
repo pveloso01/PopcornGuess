@@ -14,9 +14,9 @@ interface RequestOptions extends RequestInit {
 async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { deviceId, headers, ...fetchOptions } = options;
 
-  const requestHeaders: HeadersInit = {
+  const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...headers,
+    ...(headers as Record<string, string>),
   };
 
   // Add device ID header if provided
@@ -100,26 +100,26 @@ export const api = {
   analytics: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     submitProgress: async (data: any, deviceId?: string) => {
-      return apiRequest('/progress/submit/', {
+      return apiRequest('/analytics/progress/submit/', {
         method: 'POST',
         deviceId,
         body: JSON.stringify(data),
       });
     },
     getStreak: async (deviceId?: string) => {
-      return apiRequest('/streaks/me/', {
+      return apiRequest('/analytics/streaks/me/', {
         method: 'GET',
         deviceId,
       });
     },
     getStats: async (deviceId?: string) => {
-      return apiRequest('/stats/me/', {
+      return apiRequest('/analytics/stats/me/', {
         method: 'GET',
         deviceId,
       });
     },
     getLeaderboard: async (deviceId?: string, type: string = 'global') => {
-      return apiRequest(`/leaderboard/?type=${type}`, {
+      return apiRequest(`/analytics/leaderboard/?type=${type}`, {
         method: 'GET',
         deviceId,
       });

@@ -26,6 +26,14 @@ interface QuizQuestionProps {
   question: Question;
   questionNumber: number;
   totalQuestions: number;
+  attemptsLeft?: number;
+  maxAttempts?: number;
+  onSubmitAnswer?: (answer: string) => void | Promise<void>;
+  showFeedback?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  lastAnswerResult?: any;
+  onNext?: () => void;
+  isSubmitting?: boolean;
 }
 
 const difficultyColors = {
@@ -83,13 +91,9 @@ export default function QuizQuestion({
           <ImageQuestion text={question.text} imageUrl={question.image_url} />
         )}
 
-        {question.question_type === 'quote' && (
-          <QuoteQuestion text={question.text} />
-        )}
+        {question.question_type === 'quote' && <QuoteQuestion text={question.text} />}
 
-        {question.question_type === 'text' && (
-          <TextQuestion text={question.text} />
-        )}
+        {question.question_type === 'text' && <TextQuestion text={question.text} />}
 
         {question.question_type === 'silhouette' && question.image_url && (
           <SilhouetteQuestion text={question.text} imageUrl={question.image_url} />
@@ -105,9 +109,7 @@ function EmojiQuestion({ text, emojis }: { text: string; emojis: string }) {
   return (
     <div className="text-center">
       <p className="text-lg text-[var(--text-secondary)] mb-6">{text}</p>
-      <div className="text-6xl md:text-8xl tracking-wider animate-bounce-in">
-        {emojis}
-      </div>
+      <div className="text-6xl md:text-8xl tracking-wider animate-bounce-in">{emojis}</div>
     </div>
   );
 }
@@ -117,11 +119,7 @@ function ImageQuestion({ text, imageUrl }: { text: string; imageUrl: string }) {
     <div className="text-center">
       <p className="text-lg text-[var(--text-secondary)] mb-6">{text}</p>
       <div className="relative aspect-video rounded-xl overflow-hidden shadow-xl">
-        <img
-          src={imageUrl}
-          alt="Movie still"
-          className="w-full h-full object-cover"
-        />
+        <img src={imageUrl} alt="Movie still" className="w-full h-full object-cover" />
         {/* Blur overlay for progressive reveal */}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--background)]/50 to-transparent" />
       </div>
@@ -136,15 +134,11 @@ function QuoteQuestion({ text }: { text: string }) {
         Name the movie or show this quote is from:
       </p>
       <blockquote className="relative">
-        <span className="absolute -left-4 -top-4 text-6xl text-[var(--gold)]/20">
-          &ldquo;
-        </span>
+        <span className="absolute -left-4 -top-4 text-6xl text-[var(--gold)]/20">&ldquo;</span>
         <p className="text-2xl md:text-3xl italic text-[var(--text-primary)] leading-relaxed px-8">
           {text}
         </p>
-        <span className="absolute -right-4 bottom-0 text-6xl text-[var(--gold)]/20">
-          &rdquo;
-        </span>
+        <span className="absolute -right-4 bottom-0 text-6xl text-[var(--gold)]/20">&rdquo;</span>
       </blockquote>
     </div>
   );
@@ -153,9 +147,7 @@ function QuoteQuestion({ text }: { text: string }) {
 function TextQuestion({ text }: { text: string }) {
   return (
     <div className="text-center">
-      <p className="text-xl md:text-2xl text-[var(--text-primary)] leading-relaxed">
-        {text}
-      </p>
+      <p className="text-xl md:text-2xl text-[var(--text-primary)] leading-relaxed">{text}</p>
     </div>
   );
 }
@@ -175,4 +167,3 @@ function SilhouetteQuestion({ text, imageUrl }: { text: string; imageUrl: string
     </div>
   );
 }
-

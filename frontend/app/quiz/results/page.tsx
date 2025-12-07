@@ -10,11 +10,12 @@
  * - Social sharing options
  */
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAnonymousUser } from '@/hooks/useAnonymousUser';
 import QuizResults from '@/components/QuizResults';
 import Confetti from '@/components/Confetti';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import api from '@/lib/api';
 
 interface QuizResultsData {
@@ -42,7 +43,7 @@ interface QuizResultsData {
   shareable_text: string;
 }
 
-export default function QuizResultsPage() {
+function QuizResultsContent() {
   const searchParams = useSearchParams();
   const { deviceId } = useAnonymousUser();
   const [results, setResults] = useState<QuizResultsData | null>(null);
@@ -95,5 +96,13 @@ export default function QuizResultsPage() {
       {results.is_perfect && <Confetti />}
       <QuizResults results={results} />
     </>
+  );
+}
+
+export default function QuizResultsPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <QuizResultsContent />
+    </Suspense>
   );
 }

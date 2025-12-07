@@ -78,7 +78,7 @@ export default function DailyQuizPage() {
   }, [dailyQuiz, deviceId, session, startSession]);
 
   const handleSubmitAnswer = async () => {
-    if (!currentAnswer.trim() || !session || !deviceId) return;
+    if (!currentAnswer.trim() || !session || !deviceId || !dailyQuiz) return;
 
     const currentQuestion = getCurrentQuestion();
     if (!currentQuestion) return;
@@ -90,6 +90,7 @@ export default function DailyQuizPage() {
       // Submit to answer validation endpoint
       const result = (await api.quizzes.submitAnswer(
         {
+          quiz_id: dailyQuiz.quiz.id,
           question_id: currentQuestion.id,
           answer: currentAnswer,
           attempt_number: attempts + 1,
@@ -209,10 +210,10 @@ export default function DailyQuizPage() {
         {currentQuestion && (
           <div className="mb-8">
             <QuizQuestion
-              question={currentQuestion.text}
-              type={currentQuestion.question_type}
-              imageUrl={currentQuestion.image_url}
-              emojiClues={currentQuestion.emoji_clues}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              question={currentQuestion as any}
+              questionNumber={progress}
+              totalQuestions={total}
             />
           </div>
         )}
@@ -220,9 +221,13 @@ export default function DailyQuizPage() {
         {/* Answer Input */}
         <div className="mb-6">
           <AnswerInput
-            value={currentAnswer}
-            onChange={setCurrentAnswer}
-            onSubmit={handleSubmitAnswer}
+            onSubmit={(answer) => {
+              setCurrentAnswer(answer);
+              handleSubmitAnswer();
+            }}
+            isCorrect={feedback?.isCorrect || null}
+            attemptsUsed={attempts}
+            maxAttempts={6}
             disabled={isSubmitting}
             placeholder="Enter your answer..."
           />

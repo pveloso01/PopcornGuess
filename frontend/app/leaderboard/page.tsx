@@ -28,9 +28,10 @@ export default function LeaderboardPage() {
       setIsLoading(true);
       try {
         const data = await api.analytics.getLeaderboard(deviceId, activeTab);
-        setLeaderboard(data);
+        setLeaderboard(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Failed to load leaderboard:', error);
+        setLeaderboard([]);
       } finally {
         setIsLoading(false);
       }

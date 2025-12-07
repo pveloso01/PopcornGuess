@@ -55,8 +55,14 @@ export default function LeaderboardTable({
           <tbody>
             {entries.map((entry, index) => {
               const isCurrentUser =
-                (entry.user && entry.user.username === currentUserId) ||
-                (entry.anonymous_user && entry.anonymous_user.device_id === currentDeviceId);
+                (entry.user &&
+                  entry.user.username &&
+                  currentUserId &&
+                  entry.user.username === String(currentUserId)) ||
+                (entry.anonymous_user &&
+                  entry.anonymous_user.device_id &&
+                  currentDeviceId &&
+                  entry.anonymous_user.device_id === currentDeviceId);
 
               return (
                 <tr

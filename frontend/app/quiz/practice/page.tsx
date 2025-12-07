@@ -17,15 +17,17 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import api from '@/lib/api';
 import { useAnonymousUser } from '@/hooks/useAnonymousUser';
 
+type QuestionType = 'text' | 'image' | 'quote' | 'emoji' | 'audio' | 'silhouette';
+
 interface Question {
   id: number;
-  question_type: string;
+  question_type: QuestionType;
   text: string;
   image_url?: string;
   emoji_clues?: string;
   audio_url?: string;
   category?: { name: string };
-  difficulty: string;
+  difficulty: 'easy' | 'medium' | 'hard';
 }
 
 export default function PracticeModePage() {
@@ -50,9 +52,9 @@ export default function PracticeModePage() {
 
     setIsLoading(true);
     try {
-      const newQuestions = await api.quizzes.getPractice(deviceId, {
+      const newQuestions = (await api.quizzes.getPractice(deviceId, {
         count: 10,
-      });
+      })) as Question[];
       setQuestions((prev) => [...prev, ...newQuestions]);
     } catch (error) {
       console.error('Failed to load practice questions:', error);
@@ -65,7 +67,7 @@ export default function PracticeModePage() {
     if (!currentQuestion || !deviceId) return;
 
     try {
-      const result = await api.quizzes.submitAnswer(
+      const result = (await api.quizzes.submitAnswer(
         {
           quiz_id: 0, // Practice mode doesn't have a quiz ID
           question_id: currentQuestion.id,
@@ -73,7 +75,7 @@ export default function PracticeModePage() {
           attempt_number: 1,
         },
         deviceId
-      );
+      )) as { is_correct: boolean };
 
       if (result.is_correct) {
         setScore((prev) => prev + 1);

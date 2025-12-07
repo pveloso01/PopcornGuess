@@ -19,15 +19,17 @@ import ErrorMessage from '@/components/ErrorMessage';
 import api from '@/lib/api';
 import { useAnonymousUser } from '@/hooks/useAnonymousUser';
 
+type QuestionType = 'text' | 'image' | 'quote' | 'emoji' | 'audio' | 'silhouette';
+
 interface Question {
   id: number;
-  question_type: string;
+  question_type: QuestionType;
   text: string;
   image_url?: string;
   emoji_clues?: string;
   audio_url?: string;
   category?: { name: string };
-  difficulty: string;
+  difficulty: 'easy' | 'medium' | 'hard';
 }
 
 interface Quiz {
@@ -68,7 +70,7 @@ export default function BlitzQuizPage() {
 
       try {
         setIsLoading(true);
-        const data = await api.quizzes.getBlitz(deviceId);
+        const data = (await api.quizzes.getBlitz(deviceId)) as Quiz;
         setQuiz(data);
         setStartTime(Date.now());
       } catch (err) {
@@ -94,7 +96,7 @@ export default function BlitzQuizPage() {
     if (!currentQuestion || !deviceId || !quiz) return;
 
     try {
-      const result = await api.quizzes.submitAnswer(
+      const result = (await api.quizzes.submitAnswer(
         {
           quiz_id: quiz.id,
           question_id: currentQuestion.id,
@@ -102,7 +104,7 @@ export default function BlitzQuizPage() {
           attempt_number: 1, // Blitz mode only allows 1 attempt
         },
         deviceId
-      );
+      )) as { is_correct: boolean };
 
       const answerRecord = {
         questionId: currentQuestion.id,

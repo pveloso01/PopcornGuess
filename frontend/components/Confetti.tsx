@@ -43,32 +43,35 @@ export default function Confetti({
   colors = DEFAULT_COLORS,
 }: ConfettiProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
-  const [isVisible, setIsVisible] = useState(active);
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (active) {
-      setIsVisible(true);
-      
-      // Generate particles
-      const newParticles: Particle[] = Array.from({ length: particleCount }, (_, i) => ({
-        id: i,
-        x: Math.random() * 100,
-        delay: Math.random() * 1000,
-        duration: 2000 + Math.random() * 2000,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        size: 6 + Math.random() * 8,
-        shape: (['circle', 'square', 'star'] as const)[Math.floor(Math.random() * 3)],
-      }));
-      
-      setParticles(newParticles);
-
-      // Hide after duration
-      const timer = setTimeout(() => {
-        setIsVisible(false);
-      }, duration);
-
-      return () => clearTimeout(timer);
+    if (!active) {
+      setIsVisible(false);
+      return;
     }
+
+    setIsVisible(true);
+
+    // Generate particles
+    const newParticles: Particle[] = Array.from({ length: particleCount }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      delay: Math.random() * 1000,
+      duration: 2000 + Math.random() * 2000,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: 6 + Math.random() * 8,
+      shape: (['circle', 'square', 'star'] as const)[Math.floor(Math.random() * 3)],
+    }));
+
+    setParticles(newParticles);
+
+    // Hide after duration
+    const timer = setTimeout(() => {
+      setIsVisible(false);
+    }, duration);
+
+    return () => clearTimeout(timer);
   }, [active, particleCount, colors, duration]);
 
   if (!isVisible) return null;
@@ -85,11 +88,7 @@ export default function Confetti({
             animation: `confetti-fall ${particle.duration}ms linear ${particle.delay}ms forwards`,
           }}
         >
-          <ParticleShape
-            shape={particle.shape}
-            color={particle.color}
-            size={particle.size}
-          />
+          <ParticleShape shape={particle.shape} color={particle.color} size={particle.size} />
         </div>
       ))}
 
@@ -189,16 +188,19 @@ export function Celebration({
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (show) {
-      setIsVisible(true);
-      
-      const timer = setTimeout(() => {
-        setIsVisible(false);
-        onComplete?.();
-      }, 3000);
-
-      return () => clearTimeout(timer);
+    if (!show) {
+      setIsVisible(false);
+      return;
     }
+
+    setIsVisible(true);
+
+    const timer = setTimeout(() => {
+      setIsVisible(false);
+      onComplete?.();
+    }, 3000);
+
+    return () => clearTimeout(timer);
   }, [show, onComplete]);
 
   if (!isVisible) return null;
@@ -246,4 +248,3 @@ export function StreakFire({
     </div>
   );
 }
-

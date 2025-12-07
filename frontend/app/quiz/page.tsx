@@ -57,7 +57,6 @@ export default function QuizPage() {
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [score, setScore] = useState(0);
   const [results, setResults] = useState<AnswerResult[]>([]);
-  const [lastAnswer, setLastAnswer] = useState('');
 
   const maxAttempts = 6;
   const currentQuestion = mockQuestions[currentQuestionIndex];
@@ -70,8 +69,8 @@ export default function QuizPage() {
   };
 
   const handleSubmitAnswer = (answer: string) => {
-    setLastAnswer(answer);
-    const correct = answer.toLowerCase().trim() === correctAnswers[currentQuestion.id].toLowerCase().trim();
+    const correct =
+      answer.toLowerCase().trim() === correctAnswers[currentQuestion.id].toLowerCase().trim();
     setIsCorrect(correct);
     setAttemptsUsed((prev) => prev + 1);
 
@@ -112,28 +111,12 @@ export default function QuizPage() {
       setCurrentQuestionIndex((prev) => prev + 1);
       setAttemptsUsed(0);
       setIsCorrect(null);
-      setLastAnswer('');
-    }
-  };
-
-  const handleShare = () => {
-    const shareText = generateShareText();
-    if (navigator.share) {
-      navigator.share({
-        title: 'PopcornGuess Results',
-        text: shareText,
-      });
-    } else {
-      navigator.clipboard.writeText(shareText);
-      alert('Results copied to clipboard!');
     }
   };
 
   const generateShareText = () => {
     const date = new Date().toLocaleDateString();
-    const boxes = results
-      .map((r) => (r.is_correct ? '🟩' : '🟥'))
-      .join('');
+    const boxes = results.map((r) => (r.is_correct ? '🟩' : '🟥')).join('');
     return `🍿 PopcornGuess ${date}\n${score}/${mockQuestions.length}\n\n${boxes}\n\nhttps://popcornguess.com`;
   };
 
@@ -143,13 +126,30 @@ export default function QuizPage() {
         <Navbar />
         <div className="pt-8 pb-16 px-4">
           <QuizResults
-            score={score}
-            totalQuestions={mockQuestions.length}
-            results={results}
-            streak={5} // Mock streak
-            bestStreak={12} // Mock best streak
-            timeTaken={120} // Mock time
-            onShare={handleShare}
+            results={{
+              quiz_id: 1,
+              quiz_title: 'Mock Quiz',
+              score,
+              total_questions: mockQuestions.length,
+              percentage: (score / mockQuestions.length) * 100,
+              is_perfect: score === mockQuestions.length,
+              time_taken_seconds: 120,
+              questions_with_answers: results.map((r) => ({
+                id: r.id,
+                text: r.text,
+                correct_answer: r.correct_answer,
+                explanation: '',
+                image_url: '',
+                success_rate: 75,
+              })),
+              community_stats: {
+                total_attempts: 100,
+                total_completions: 85,
+                completion_rate: 85,
+                average_score: 7.5,
+              },
+              shareable_text: generateShareText(),
+            }}
           />
         </div>
       </div>
@@ -164,9 +164,7 @@ export default function QuizPage() {
         <div className="max-w-4xl mx-auto">
           {/* Quiz header */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gradient-gold mb-2">
-              Daily Quiz
-            </h1>
+            <h1 className="text-2xl font-bold text-gradient-gold mb-2">Daily Quiz</h1>
             <p className="text-[var(--text-muted)]">
               {new Date().toLocaleDateString('en-US', {
                 weekday: 'long',
@@ -208,4 +206,3 @@ export default function QuizPage() {
     </div>
   );
 }
-
