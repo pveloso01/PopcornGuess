@@ -7,6 +7,7 @@ import uuid
 from django.db import models
 from django.db.models import Avg, Count
 from django.utils import timezone
+
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -120,6 +121,53 @@ class StreakView(APIView):
                 {"detail": "Device not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        serializer = StreakSerializer(streak)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Use a streak freeze",
+        description=(
+            "Use a streak freeze to protect the streak from breaking. "
+            "Freezes are earned at milestones (7, 30, 100 days) and can be "
+            "used when a day is missed."
+        ),
+        tags=["analytics"],
+        responses={
+            200: StreakSerializer,
+            400: OpenApiResponse(description="No freezes available"),
+            404: OpenApiResponse(description="Device not found"),
+        },
+    )
+    def post(self, request):  # type: ignore[no-untyped-def]
+        """Use a streak freeze for device."""
+        device_id = request.headers.get("X-Device-ID")
+
+        if not device_id:
+            return Response(
+                {"detail": "X-Device-ID header required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            device = AnonymousUser.objects.get(device_id=device_id)
+            streak = Streak.objects.get(anonymous_user=device)
+        except (AnonymousUser.DoesNotExist, Streak.DoesNotExist):
+            return Response(
+                {"detail": "Device not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check if freeze is available
+        if not streak._can_use_streak_freeze():
+            return Response(
+                {"detail": "No streak freezes available."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Use the freeze
+        streak._use_streak_freeze()
+        streak.save()
 
         serializer = StreakSerializer(streak)
         return Response(serializer.data)
@@ -296,9 +344,7 @@ class LeaderboardView(APIView):
 
     @extend_schema(
         summary="Get leaderboard",
-        description=(
-            "Retrieve the global leaderboard showing top players by score."
-        ),
+        description=("Retrieve the global leaderboard showing top players by score."),
         tags=["analytics"],
         responses={200: LeaderboardEntrySerializer(many=True)},
     )
@@ -307,9 +353,9 @@ class LeaderboardView(APIView):
         device_id = request.headers.get("X-Device-ID")
 
         # Get top 100 by total score
-        top_stats = UserStats.objects.exclude(
-            total_score=0
-        ).order_by("-total_score")[:100]
+        top_stats = UserStats.objects.exclude(total_score=0).order_by("-total_score")[
+            :100
+        ]
 
         leaderboard = []
         for rank, stats in enumerate(top_stats, start=1):
@@ -333,13 +379,15 @@ class LeaderboardView(APIView):
             else:
                 continue
 
-            leaderboard.append({
-                "rank": rank,
-                "username": username,
-                "score": stats.total_score,
-                "streak": streak,
-                "is_current_user": is_current,
-            })
+            leaderboard.append(
+                {
+                    "rank": rank,
+                    "username": username,
+                    "score": stats.total_score,
+                    "streak": streak,
+                    "is_current_user": is_current,
+                }
+            )
 
         serializer = LeaderboardEntrySerializer(leaderboard, many=True)
         return Response(serializer.data)
@@ -439,9 +487,7 @@ class DailyStatsView(APIView):
             )
 
         # Get aggregate stats for today's quiz
-        progress_stats = UserProgress.objects.filter(
-            quiz=daily_puzzle.quiz
-        ).aggregate(
+        progress_stats = UserProgress.objects.filter(quiz=daily_puzzle.quiz).aggregate(
             total_players=Count("id"),
             avg_score=Avg("score"),
             completed_count=Count("id", filter=models.Q(is_completed=True)),

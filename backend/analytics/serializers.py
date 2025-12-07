@@ -38,6 +38,7 @@ class StreakSerializer(serializers.ModelSerializer):
             "best_streak",
             "last_played_date",
             "streak_freezes_available",
+            "streak_freezes_earned",
             "total_days_played",
         ]
 
@@ -128,4 +129,3 @@ class StreakMilestoneSerializer(serializers.Serializer):
     message = serializers.CharField()
     badge_name = serializers.CharField()
     is_new = serializers.BooleanField()
-
