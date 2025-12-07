@@ -44,6 +44,7 @@ class QuestionAdmin(admin.ModelAdmin):
     search_fields = ["text", "correct_answer"]
     readonly_fields = ["times_shown", "times_correct", "created_at", "updated_at"]
     ordering = ["-created_at"]
+    actions = ["activate_questions", "deactivate_questions", "reset_statistics"]
 
     fieldsets = [
         (
@@ -101,6 +102,26 @@ class QuestionAdmin(admin.ModelAdmin):
         """Return formatted success rate."""
         return f"{obj.success_rate:.1f}%"
 
+    @admin.action(description="Activate selected questions")
+    def activate_questions(self, request, queryset):  # type: ignore[no-untyped-def]
+        """Activate selected questions."""
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"{updated} questions were successfully activated.")
+
+    @admin.action(description="Deactivate selected questions")
+    def deactivate_questions(self, request, queryset):  # type: ignore[no-untyped-def]
+        """Deactivate selected questions."""
+        updated = queryset.update(is_active=False)
+        self.message_user(
+            request, f"{updated} questions were successfully deactivated."
+        )
+
+    @admin.action(description="Reset statistics for selected questions")
+    def reset_statistics(self, request, queryset):  # type: ignore[no-untyped-def]
+        """Reset statistics for selected questions."""
+        updated = queryset.update(times_shown=0, times_correct=0)
+        self.message_user(request, f"Statistics reset for {updated} questions.")
+
 
 @admin.register(Quiz)
 class QuizAdmin(admin.ModelAdmin):
@@ -121,6 +142,7 @@ class QuizAdmin(admin.ModelAdmin):
     readonly_fields = ["times_played", "created_at", "updated_at"]
     date_hierarchy = "publish_date"
     inlines = [QuizQuestionInline]
+    actions = ["publish_quizzes", "unpublish_quizzes", "duplicate_quiz"]
 
     fieldsets = [
         (
@@ -154,6 +176,54 @@ class QuizAdmin(admin.ModelAdmin):
     def question_count(self, obj: Quiz) -> int:
         """Return the number of questions in the quiz."""
         return obj.question_count
+
+    @admin.action(description="Publish selected quizzes")
+    def publish_quizzes(self, request, queryset):  # type: ignore[no-untyped-def]
+        """Publish selected quizzes."""
+        from django.utils import timezone
+
+        updated = queryset.update(is_published=True, publish_date=timezone.now())
+        self.message_user(request, f"{updated} quizzes were successfully published.")
+
+    @admin.action(description="Unpublish selected quizzes")
+    def unpublish_quizzes(self, request, queryset):  # type: ignore[no-untyped-def]
+        """Unpublish selected quizzes."""
+        updated = queryset.update(is_published=False)
+        self.message_user(request, f"{updated} quizzes were successfully unpublished.")
+
+    @admin.action(description="Duplicate selected quiz")
+    def duplicate_quiz(self, request, queryset):  # type: ignore[no-untyped-def]
+        """Duplicate selected quiz (only works with single selection)."""
+        if queryset.count() != 1:
+            self.message_user(
+                request, "Please select only one quiz to duplicate.", level="error"
+            )
+            return
+
+        original = queryset.first()
+        # Create a copy
+        duplicate = Quiz.objects.create(
+            title=f"{original.title} (Copy)",
+            slug=f"{original.slug}-copy",
+            description=original.description,
+            quiz_type=original.quiz_type,
+            category=original.category,
+            time_limit_seconds=original.time_limit_seconds,
+            max_attempts=original.max_attempts,
+            is_published=False,
+        )
+
+        # Copy questions
+        for quiz_question in original.quiz_questions.all():
+            QuizQuestion.objects.create(
+                quiz=duplicate,
+                question=quiz_question.question,
+                order=quiz_question.order,
+            )
+
+        self.message_user(
+            request, f"Quiz duplicated successfully as '{duplicate.title}'."
+        )
 
 
 @admin.register(DailyPuzzle)
