@@ -4,7 +4,7 @@ Serializers for Analytics API endpoints.
 
 from rest_framework import serializers
 
-from .models import AnonymousUser, Streak, UserProgress, UserStats
+from .models import AnonymousUser, DailyQuizStats, Streak, UserProgress, UserStats
 
 
 class DeviceRegistrationSerializer(serializers.Serializer):
@@ -129,3 +129,19 @@ class StreakMilestoneSerializer(serializers.Serializer):
     message = serializers.CharField()
     badge_name = serializers.CharField()
     is_new = serializers.BooleanField()
+
+
+class DailyQuizStatsSerializer(serializers.ModelSerializer):
+    """Serializer for daily quiz statistics."""
+
+    completion_rate = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = DailyQuizStats
+        fields = [
+            "date",
+            "total_attempts",
+            "total_completions",
+            "average_score",
+            "completion_rate",
+        ]

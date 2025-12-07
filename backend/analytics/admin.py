@@ -4,7 +4,7 @@ Admin configuration for Analytics models.
 
 from django.contrib import admin
 
-from .models import AnonymousUser, Streak, UserProgress, UserStats
+from .models import AnonymousUser, DailyQuizStats, Streak, UserProgress, UserStats
 
 
 @admin.register(AnonymousUser)
@@ -130,3 +130,31 @@ class UserStatsAdmin(admin.ModelAdmin):
     def accuracy_display(self, obj: UserStats) -> str:
         """Return formatted accuracy."""
         return f"{obj.accuracy:.1f}%"
+
+
+@admin.register(DailyQuizStats)
+class DailyQuizStatsAdmin(admin.ModelAdmin):
+    """Admin configuration for DailyQuizStats model."""
+
+    list_display = [
+        "date",
+        "quiz",
+        "total_attempts",
+        "total_completions",
+        "completion_rate_display",
+        "average_score_display",
+    ]
+    list_filter = ["date", "quiz__category"]
+    search_fields = ["quiz__title"]
+    readonly_fields = ["created_at", "updated_at"]
+    ordering = ["-date"]
+
+    @admin.display(description="Completion Rate")
+    def completion_rate_display(self, obj: DailyQuizStats) -> str:
+        """Return formatted completion rate."""
+        return f"{obj.completion_rate:.1f}%"
+
+    @admin.display(description="Avg Score")
+    def average_score_display(self, obj: DailyQuizStats) -> str:
+        """Return formatted average score."""
+        return f"{obj.average_score:.1f}"
