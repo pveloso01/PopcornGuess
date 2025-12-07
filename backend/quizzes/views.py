@@ -126,6 +126,49 @@ class DailyQuizView(APIView):
         return Response(serializer.data)
 
 
+class BlitzQuizView(APIView):
+    """Get a blitz mode quiz."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Start a blitz quiz",
+        description=(
+            "Get a random blitz quiz for fast-paced gameplay. "
+            "Blitz mode features a time limit and rapid-fire questions."
+        ),
+        tags=["quizzes"],
+        responses={
+            200: QuizDetailSerializer,
+            404: OpenApiResponse(description="No blitz quiz available"),
+        },
+    )
+    def get(self, request):  # type: ignore[no-untyped-def]
+        """Get a random blitz quiz."""
+        import random
+
+        # Get all published blitz quizzes
+        blitz_quizzes = Quiz.objects.filter(
+            quiz_type="blitz", is_published=True
+        ).prefetch_related("questions")
+
+        if not blitz_quizzes.exists():
+            return Response(
+                {"detail": "No blitz quizzes available."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Select a random quiz
+        quiz = random.choice(list(blitz_quizzes))  # nosec B311
+
+        # Increment play counter
+        quiz.times_played += 1
+        quiz.save()
+
+        serializer = QuizDetailSerializer(quiz)
+        return Response(serializer.data)
+
+
 class SubmitAnswerView(APIView):
     """Submit an answer to a quiz question."""
 

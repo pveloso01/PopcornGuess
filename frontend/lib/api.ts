@@ -147,15 +147,23 @@ export const api = {
       });
     },
 
+    getBlitz: async (deviceId?: string) => {
+      return apiRequest('/quizzes/blitz/start/', {
+        method: 'GET',
+        deviceId,
+      });
+    },
+
     submitAnswer: async (
       data: {
+        quiz_id: number;
         question_id: number;
         answer: string;
         attempt_number: number;
       },
       deviceId?: string
     ) => {
-      return apiRequest('/quizzes/submit-answer/', {
+      return apiRequest('/quizzes/submit/', {
         method: 'POST',
         deviceId,
         body: JSON.stringify(data),
@@ -163,7 +171,7 @@ export const api = {
     },
 
     getResults: async (quizId: number, deviceId?: string) => {
-      return apiRequest(`/quizzes/${quizId}/results/`, {
+      return apiRequest(`/quizzes/results/${quizId}/`, {
         method: 'GET',
         deviceId,
       });
