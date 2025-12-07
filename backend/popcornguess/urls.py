@@ -31,6 +31,8 @@ urlpatterns = [
     path("api/v1/", include("users.urls")),
     path("api/v1/", include("quizzes.urls")),
     path("api/v1/", include("analytics.urls")),
+    # Social authentication (allauth)
+    path("accounts/", include("allauth.urls")),
     # OpenAPI Schema & Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
