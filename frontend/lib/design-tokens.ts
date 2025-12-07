@@ -23,9 +23,9 @@ export const colors = {
 
   // Cinema Palette
   gold: {
-    light: '#f4d03f',
-    DEFAULT: '#d4af37',
-    dark: '#a67c00',
+    light: '#ffed4a',
+    DEFAULT: '#ffd700',
+    dark: '#e6b800',
   },
   velvet: {
     light: '#b22222',
@@ -69,7 +69,7 @@ export const shadows = {
   DEFAULT: '0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3)',
   lg: '0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.4)',
   xl: '0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.4)',
-  glowGold: '0 0 20px rgba(212, 175, 55, 0.3)',
+  glowGold: '0 0 20px rgba(255, 215, 0, 0.4)',
   glowAmber: '0 0 20px rgba(255, 140, 0, 0.3)',
 } as const;
 
@@ -157,4 +157,3 @@ export default {
   difficultyColors,
   questionTypeIcons,
 };
-
