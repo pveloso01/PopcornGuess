@@ -1,0 +1,6 @@
+# Feature 24: Pre-Launch Marketing Setup
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://popcornguess.com/sitemap.xml
