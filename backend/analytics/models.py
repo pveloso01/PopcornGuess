@@ -235,6 +235,11 @@ class Streak(models.Model):
         default=0,
         help_text=_("Number of streak freeze tokens available"),
     )
+    streak_freezes_earned = models.PositiveIntegerField(
+        _("streak freezes earned"),
+        default=0,
+        help_text=_("Total number of streak freezes earned from milestones"),
+    )
     streak_freeze_used_date = models.DateField(
         _("streak freeze used date"),
         null=True,
@@ -272,7 +277,9 @@ class Streak(models.Model):
         identifier = self.user or self.anonymous_user
         return f"{identifier}: {self.current_streak} day streak"
 
-    def update_streak(self, completion_date: timezone.datetime.date = None) -> bool:
+    def update_streak(  # type: ignore[no-untyped-def]
+        self, completion_date=None
+    ) -> bool:
         """
         Update streak based on quiz completion.
 
@@ -288,6 +295,7 @@ class Streak(models.Model):
             self.total_days_played = 1
             self.last_played_date = completion_date
             self.save()
+            self._check_and_award_milestone_freezes()
             return True
 
         days_since_last = (completion_date - self.last_played_date).days
@@ -302,6 +310,7 @@ class Streak(models.Model):
             self.total_days_played += 1
             self.last_played_date = completion_date
             self.save()
+            self._check_and_award_milestone_freezes()
             return True
         elif days_since_last == 2 and self._can_use_streak_freeze():
             # Missed one day but can use streak freeze
@@ -311,6 +320,7 @@ class Streak(models.Model):
             self.total_days_played += 1
             self.last_played_date = completion_date
             self.save()
+            self._check_and_award_milestone_freezes()
             return True
         else:
             # Streak broken
@@ -319,6 +329,28 @@ class Streak(models.Model):
             self.last_played_date = completion_date
             self.save()
             return False
+
+    def _check_and_award_milestone_freezes(self) -> None:
+        """
+        Award streak freezes at milestone achievements.
+
+        Awards:
+        - 1 freeze at 7-day milestone
+        - 2 freezes at 30-day milestone
+        - 3 freezes at 100-day milestone
+        """
+        milestones = {
+            7: 1,
+            30: 2,
+            100: 3,
+        }
+
+        for milestone, freeze_count in milestones.items():
+            if self.current_streak == milestone:
+                self.streak_freezes_available += freeze_count
+                self.streak_freezes_earned += freeze_count
+                self.save()
+                break
 
     def _can_use_streak_freeze(self) -> bool:
         """Check if user can use a streak freeze."""
