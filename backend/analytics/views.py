@@ -700,3 +700,153 @@ class DailyStatsView(APIView):
 
         serializer = DailyQuizStatsSerializer(daily_stats)
         return Response(serializer.data)
+
+
+class MigrateProgressView(APIView):
+    """Migrate anonymous user progress to authenticated user."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Migrate anonymous progress to authenticated user",
+        description=(
+            "Transfer all progress, streaks, and stats from an anonymous device "
+            "to a newly registered or logged-in authenticated user. "
+            "This allows users to retain their progress when creating an account."
+        ),
+        tags=["analytics"],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Anonymous device ID to migrate from",
+                    }
+                },
+                "required": ["device_id"],
+            }
+        },
+        responses={
+            200: {"description": "Progress migrated successfully"},
+            400: OpenApiResponse(description="Invalid request"),
+            401: OpenApiResponse(description="Authentication required"),
+            404: OpenApiResponse(description="Device not found"),
+        },
+    )
+    def post(self, request):  # type: ignore[no-untyped-def]
+        """Migrate anonymous progress to authenticated user."""
+        if not request.user.is_authenticated:
+            return Response(
+                {"detail": "Authentication required to migrate progress."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        device_id = request.data.get("device_id")
+        if not device_id:
+            return Response(
+                {"detail": "device_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Get the anonymous user
+            anon_user = AnonymousUser.objects.get(device_id=device_id)
+        except AnonymousUser.DoesNotExist:
+            return Response(
+                {"detail": "Device not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check if already migrated
+        if anon_user.user is not None:
+            return Response(
+                {"detail": "Device already migrated to another user."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get or create streak and stats for authenticated user
+        user_streak, _ = Streak.objects.get_or_create(user=request.user)
+        user_stats, _ = UserStats.objects.get_or_create(user=request.user)
+
+        # Migrate streak (keep the best one)
+        try:
+            anon_streak = Streak.objects.get(anonymous_user=anon_user)
+            if anon_streak.current_streak > user_streak.current_streak:
+                user_streak.current_streak = anon_streak.current_streak
+            if anon_streak.best_streak > user_streak.best_streak:
+                user_streak.best_streak = anon_streak.best_streak
+            user_streak.total_days_played += anon_streak.total_days_played
+            user_streak.streak_freezes_available += anon_streak.streak_freezes_available
+            user_streak.streak_freezes_earned += anon_streak.streak_freezes_earned
+            if anon_streak.last_played_date:
+                if (
+                    user_streak.last_played_date is None
+                    or anon_streak.last_played_date > user_streak.last_played_date
+                ):
+                    user_streak.last_played_date = anon_streak.last_played_date
+            user_streak.save()
+
+            # Delete the anonymous streak
+            anon_streak.delete()
+        except Streak.DoesNotExist:
+            pass
+
+        # Migrate stats (merge them)
+        try:
+            anon_stats = UserStats.objects.get(anonymous_user=anon_user)
+            user_stats.total_quizzes_played += anon_stats.total_quizzes_played
+            user_stats.total_quizzes_completed += anon_stats.total_quizzes_completed
+            user_stats.total_questions_answered += anon_stats.total_questions_answered
+            user_stats.total_correct_answers += anon_stats.total_correct_answers
+            user_stats.perfect_scores += anon_stats.perfect_scores
+            user_stats.total_score += anon_stats.total_score
+
+            # Recalculate average score
+            if user_stats.total_quizzes_completed > 0:
+                user_stats.average_score = (
+                    user_stats.total_score / user_stats.total_quizzes_completed
+                )
+
+            # Keep the best score
+            if anon_stats.best_score > user_stats.best_score:
+                user_stats.best_score = anon_stats.best_score
+
+            # Keep the fastest completion time
+            if anon_stats.fastest_completion_seconds:
+                if (
+                    user_stats.fastest_completion_seconds is None
+                    or anon_stats.fastest_completion_seconds
+                    < user_stats.fastest_completion_seconds
+                ):
+                    user_stats.fastest_completion_seconds = (
+                        anon_stats.fastest_completion_seconds
+                    )
+
+            user_stats.save()
+
+            # Delete the anonymous stats
+            anon_stats.delete()
+        except UserStats.DoesNotExist:
+            pass
+
+        # Migrate all user progress
+        UserProgress.objects.filter(anonymous_user=anon_user).update(
+            anonymous_user=None,
+            user=request.user,
+        )
+
+        # Mark the anonymous user as migrated
+        anon_user.user = request.user
+        anon_user.save()
+
+        return Response(
+            {
+                "detail": "Progress migrated successfully.",
+                "streak": user_streak.current_streak,
+                "total_score": user_stats.total_score,
+                "quizzes_completed": user_stats.total_quizzes_completed,
+            },
+            status=status.HTTP_200_OK,
+        )

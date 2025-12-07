@@ -8,6 +8,7 @@ from .views import (
     DailyStatsView,
     FriendsLeaderboardView,
     LeaderboardView,
+    MigrateProgressView,
     MonthlyLeaderboardView,
     ProgressView,
     RegisterDeviceView,
@@ -39,6 +40,11 @@ urlpatterns = [
         "leaderboards/friends/",
         FriendsLeaderboardView.as_view(),
         name="leaderboard-friends",
+    ),
+    path(
+        "migrate-progress/",
+        MigrateProgressView.as_view(),
+        name="migrate-progress",
     ),
 ]
 
