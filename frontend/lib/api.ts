@@ -96,6 +96,36 @@ export const api = {
     },
   },
 
+  // Analytics endpoints
+  analytics: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    submitProgress: async (data: any, deviceId?: string) => {
+      return apiRequest('/progress/submit/', {
+        method: 'POST',
+        deviceId,
+        body: JSON.stringify(data),
+      });
+    },
+    getStreak: async (deviceId?: string) => {
+      return apiRequest('/streaks/me/', {
+        method: 'GET',
+        deviceId,
+      });
+    },
+    getStats: async (deviceId?: string) => {
+      return apiRequest('/stats/me/', {
+        method: 'GET',
+        deviceId,
+      });
+    },
+    getLeaderboard: async (deviceId?: string, type: string = 'global') => {
+      return apiRequest(`/leaderboard/?type=${type}`, {
+        method: 'GET',
+        deviceId,
+      });
+    },
+  },
+
   // Progress endpoints
   progress: {
     start: async (quizId: number, deviceId?: string) => {
