@@ -4,6 +4,7 @@ API views for analytics and streak tracking.
 
 import uuid
 
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Avg, Count
 from django.utils import timezone
@@ -15,6 +16,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from quizzes.models import DailyPuzzle, Quiz
+
+User = get_user_model()
 
 from .models import AnonymousUser, DailyQuizStats, Streak, UserProgress, UserStats
 from .serializers import (
@@ -406,6 +409,191 @@ class LeaderboardView(APIView):
                     "is_current_user": is_current,
                 }
             )
+
+        serializer = LeaderboardEntrySerializer(leaderboard, many=True)
+        return Response(serializer.data)
+
+
+class WeeklyLeaderboardView(APIView):
+    """Get weekly leaderboard data."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Get weekly leaderboard",
+        description=("Retrieve the weekly leaderboard showing top players this week."),
+        tags=["analytics"],
+        responses={200: LeaderboardEntrySerializer(many=True)},
+    )
+    def get(self, request):  # type: ignore[no-untyped-def]
+        """Get weekly leaderboard."""
+        device_id = request.headers.get("X-Device-ID")
+        today = timezone.now().date()
+        week_start = today - timezone.timedelta(days=today.weekday())
+
+        # Get progress from this week
+        weekly_progress = (
+            UserProgress.objects.filter(
+                completed_at__gte=week_start,
+                is_completed=True,
+            )
+            .values("anonymous_user", "user")
+            .annotate(
+                total_score=models.Sum("score"),
+                total_completed=Count("id"),
+            )
+            .order_by("-total_score")[:100]
+        )
+
+        leaderboard = []
+        for rank, progress in enumerate(weekly_progress, start=1):
+            if progress["anonymous_user"]:
+                try:
+                    anon_user = AnonymousUser.objects.get(id=progress["anonymous_user"])
+                    username = f"Player {str(anon_user.device_id)[:8]}"
+                    is_current = str(anon_user.device_id) == device_id
+                except AnonymousUser.DoesNotExist:
+                    continue
+            elif progress["user"]:
+                try:
+                    user = User.objects.get(id=progress["user"])
+                    username = user.username
+                    is_current = False
+                except User.DoesNotExist:
+                    continue
+            else:
+                continue
+
+            leaderboard.append(
+                {
+                    "rank": rank,
+                    "username": username,
+                    "score": progress["total_score"],
+                    "streak": 0,  # Weekly doesn't show streak
+                    "is_current_user": is_current,
+                }
+            )
+
+        serializer = LeaderboardEntrySerializer(leaderboard, many=True)
+        return Response(serializer.data)
+
+
+class MonthlyLeaderboardView(APIView):
+    """Get monthly leaderboard data."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Get monthly leaderboard",
+        description=("Retrieve the monthly leaderboard showing top players this month."),
+        tags=["analytics"],
+        responses={200: LeaderboardEntrySerializer(many=True)},
+    )
+    def get(self, request):  # type: ignore[no-untyped-def]
+        """Get monthly leaderboard."""
+        device_id = request.headers.get("X-Device-ID")
+        today = timezone.now().date()
+        month_start = today.replace(day=1)
+
+        # Get progress from this month
+        monthly_progress = (
+            UserProgress.objects.filter(
+                completed_at__gte=month_start,
+                is_completed=True,
+            )
+            .values("anonymous_user", "user")
+            .annotate(
+                total_score=models.Sum("score"),
+                total_completed=Count("id"),
+            )
+            .order_by("-total_score")[:100]
+        )
+
+        leaderboard = []
+        for rank, progress in enumerate(monthly_progress, start=1):
+            if progress["anonymous_user"]:
+                try:
+                    anon_user = AnonymousUser.objects.get(id=progress["anonymous_user"])
+                    username = f"Player {str(anon_user.device_id)[:8]}"
+                    is_current = str(anon_user.device_id) == device_id
+                except AnonymousUser.DoesNotExist:
+                    continue
+            elif progress["user"]:
+                try:
+                    user = User.objects.get(id=progress["user"])
+                    username = user.username
+                    is_current = False
+                except User.DoesNotExist:
+                    continue
+            else:
+                continue
+
+            leaderboard.append(
+                {
+                    "rank": rank,
+                    "username": username,
+                    "score": progress["total_score"],
+                    "streak": 0,  # Monthly doesn't show streak
+                    "is_current_user": is_current,
+                }
+            )
+
+        serializer = LeaderboardEntrySerializer(leaderboard, many=True)
+        return Response(serializer.data)
+
+
+class FriendsLeaderboardView(APIView):
+    """Get friends leaderboard data."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Get friends leaderboard",
+        description=(
+            "Retrieve the friends leaderboard showing top friends by score. "
+            "Requires authentication."
+        ),
+        tags=["analytics"],
+        responses={200: LeaderboardEntrySerializer(many=True)},
+    )
+    def get(self, request):  # type: ignore[no-untyped-def]
+        """Get friends leaderboard."""
+        if not request.user.is_authenticated:
+            return Response(
+                {"detail": "Authentication required for friends leaderboard."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Get user's friends
+        friends = list(request.user.friends.all())
+        if not friends:
+            return Response([])
+
+        # Get stats for friends
+        friend_stats = (
+            UserStats.objects.filter(user__in=friends)
+            .exclude(total_score=0)
+            .order_by("-total_score")
+        )
+
+        leaderboard = []
+        for rank, stats in enumerate(friend_stats, start=1):
+            if stats.user:
+                try:
+                    streak_obj = Streak.objects.get(user=stats.user)
+                    streak = streak_obj.current_streak
+                except Streak.DoesNotExist:
+                    streak = 0
+
+                leaderboard.append(
+                    {
+                        "rank": rank,
+                        "username": stats.user.username,
+                        "score": stats.total_score,
+                        "streak": streak,
+                        "is_current_user": stats.user.id == request.user.id,
+                    }
+                )
 
         serializer = LeaderboardEntrySerializer(leaderboard, many=True)
         return Response(serializer.data)
