@@ -159,18 +159,39 @@ class AnswerResultSerializer(serializers.Serializer):
     explanation = serializers.CharField(allow_null=True)
 
 
+class CommunityStatsSerializer(serializers.Serializer):
+    """Serializer for community statistics."""
+
+    total_attempts = serializers.IntegerField()
+    total_completions = serializers.IntegerField()
+    completion_rate = serializers.FloatField()
+    average_score = serializers.FloatField()
+
+
+class QuestionWithStatsSerializer(serializers.Serializer):
+    """Serializer for questions with answers and stats."""
+
+    id = serializers.IntegerField()
+    text = serializers.CharField()
+    correct_answer = serializers.CharField()
+    explanation = serializers.CharField(allow_null=True, allow_blank=True)
+    image_url = serializers.CharField(allow_null=True, allow_blank=True)
+    success_rate = serializers.FloatField()
+
+
 class QuizResultsSerializer(serializers.Serializer):
     """Serializer for quiz completion results."""
 
     quiz_id = serializers.IntegerField()
+    quiz_title = serializers.CharField()
     score = serializers.IntegerField()
     total_questions = serializers.IntegerField()
     percentage = serializers.FloatField()
     is_perfect = serializers.BooleanField()
     time_taken_seconds = serializers.IntegerField(allow_null=True)
-    questions_with_answers = QuestionWithAnswerSerializer(many=True)
-    streak_updated = serializers.BooleanField()
-    new_streak = serializers.IntegerField()
+    questions_with_answers = QuestionWithStatsSerializer(many=True)
+    community_stats = CommunityStatsSerializer()
+    shareable_text = serializers.CharField()
 
 
 class HintRequestSerializer(serializers.Serializer):
@@ -192,4 +213,3 @@ class HintResponseSerializer(serializers.Serializer):
     hint = serializers.CharField()
     hint_number = serializers.IntegerField()
     hints_remaining = serializers.IntegerField()
-

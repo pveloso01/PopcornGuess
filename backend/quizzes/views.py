@@ -5,9 +5,9 @@ API views for quiz gameplay.
 from difflib import SequenceMatcher
 
 from django.utils import timezone
+
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -261,7 +261,10 @@ class GetHintView(APIView):
             )
 
         # Count remaining hints
-        hints_remaining = sum(1 for h in [question.hint_1, question.hint_2, question.hint_3] if h) - hint_number
+        hints_remaining = (
+            sum(1 for h in [question.hint_1, question.hint_2, question.hint_3] if h)
+            - hint_number
+        )
 
         result = {
             "hint": hint,
@@ -282,7 +285,7 @@ class QuizResultsView(APIView):
         summary="Get quiz results",
         description=(
             "Get the results for a completed quiz, including all "
-            "questions with their correct answers and explanations."
+            "questions with their correct answers, explanations, and community stats."
         ),
         tags=["quizzes"],
         responses={
@@ -291,7 +294,9 @@ class QuizResultsView(APIView):
         },
     )
     def get(self, request, quiz_id):  # type: ignore[no-untyped-def]
-        """Get quiz results with all answers revealed."""
+        """Get quiz results with all answers revealed and community stats."""
+        from analytics.models import DailyQuizStats, UserProgress
+
         try:
             quiz = Quiz.objects.get(id=quiz_id)
         except Quiz.DoesNotExist:
@@ -300,21 +305,82 @@ class QuizResultsView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # In a full implementation, this would fetch the user's
-        # actual progress from UserProgress model
-        questions = quiz.questions.all()
+        # Get user progress
+        progress_id = request.query_params.get("progress_id")
+
+        user_progress = None
+        if progress_id:
+            try:
+                user_progress = UserProgress.objects.get(id=progress_id)
+            except UserProgress.DoesNotExist:
+                pass
+
+        # Get community stats
+        today = timezone.now().date()
+        daily_stats, _ = DailyQuizStats.objects.get_or_create(date=today, quiz=quiz)
+
+        # Get questions with answers
+        questions = quiz.questions.all().prefetch_related("quizzes")
+        questions_with_answers = []
+        for question in questions:
+            questions_with_answers.append(
+                {
+                    "id": question.id,
+                    "text": question.text,
+                    "correct_answer": question.correct_answer,
+                    "explanation": question.explanation,
+                    "image_url": question.image_url,
+                    "success_rate": question.success_rate,
+                }
+            )
 
         result = {
             "quiz_id": quiz.id,
-            "score": 0,  # Would come from UserProgress
+            "quiz_title": quiz.title,
+            "score": user_progress.score if user_progress else 0,
             "total_questions": questions.count(),
-            "percentage": 0.0,  # Would be calculated
-            "is_perfect": False,
-            "time_taken_seconds": None,
-            "questions_with_answers": questions,
-            "streak_updated": False,
-            "new_streak": 0,
+            "percentage": (user_progress.percentage_score if user_progress else 0.0),
+            "is_perfect": (user_progress.is_perfect_score if user_progress else False),
+            "time_taken_seconds": (
+                user_progress.time_taken_seconds if user_progress else None
+            ),
+            "questions_with_answers": questions_with_answers,
+            "community_stats": {
+                "total_attempts": daily_stats.total_attempts,
+                "total_completions": daily_stats.total_completions,
+                "completion_rate": daily_stats.completion_rate,
+                "average_score": daily_stats.average_score,
+            },
+            "shareable_text": self._generate_shareable_text(quiz, user_progress),
         }
 
         serializer = QuizResultsSerializer(result)
         return Response(serializer.data)
+
+    def _generate_shareable_text(
+        self, quiz, user_progress  # type: ignore[no-untyped-def]
+    ):  # type: ignore[no-untyped-def]
+        """Generate Wordle-style shareable text."""
+        if not user_progress:
+            return ""
+
+        score = user_progress.score
+        total = user_progress.total_questions
+
+        # Generate grid (🟩 for correct, 🟥 for incorrect)
+        grid_lines = []
+        answers = user_progress.answers or []
+
+        for i in range(0, len(answers), 5):  # 5 per row
+            row = answers[i : i + 5]
+            row_text = "".join(["🟩" if a.get("isCorrect") else "🟥" for a in row])
+            grid_lines.append(row_text)
+
+        grid = "\n".join(grid_lines)
+
+        return f"""PopcornGuess - {quiz.title}
+{score}/{total} ⭐
+
+{grid}
+
+Play at: https://popcornguess.com"""
