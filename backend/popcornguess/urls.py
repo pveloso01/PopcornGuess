@@ -29,6 +29,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # API v1
     path("api/v1/", include("users.urls")),
+    path("api/v1/", include("quizzes.urls")),
     # OpenAPI Schema & Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
