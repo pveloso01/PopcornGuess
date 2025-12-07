@@ -20,6 +20,7 @@ from .serializers import (
     DailyPuzzleSerializer,
     HintRequestSerializer,
     HintResponseSerializer,
+    QuestionSerializer,
     QuizDetailSerializer,
     QuizListSerializer,
     QuizResultsSerializer,
@@ -166,6 +167,77 @@ class BlitzQuizView(APIView):
         quiz.save()
 
         serializer = QuizDetailSerializer(quiz)
+        return Response(serializer.data)
+
+
+class PracticeQuestionView(APIView):
+    """Get random questions for practice mode."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Get random practice questions",
+        description=(
+            "Get a set of random questions for practice mode. "
+            "Practice mode is endless with no time limits or streak tracking."
+        ),
+        tags=["quizzes"],
+        parameters=[
+            {
+                "name": "count",
+                "in": "query",
+                "description": "Number of questions to fetch (default: 10)",
+                "required": False,
+                "schema": {"type": "integer", "default": 10},
+            },
+            {
+                "name": "category",
+                "in": "query",
+                "description": "Filter by category slug",
+                "required": False,
+                "schema": {"type": "string"},
+            },
+            {
+                "name": "difficulty",
+                "in": "query",
+                "description": "Filter by difficulty (easy/medium/hard)",
+                "required": False,
+                "schema": {"type": "string"},
+            },
+        ],
+        responses={
+            200: QuestionSerializer(many=True),
+            404: OpenApiResponse(description="No questions available"),
+        },
+    )
+    def get(self, request):  # type: ignore[no-untyped-def]
+        """Get random practice questions."""
+        import random
+
+        count = int(request.query_params.get("count", 10))
+        category_slug = request.query_params.get("category")
+        difficulty = request.query_params.get("difficulty")
+
+        # Build query
+        questions = Question.objects.filter(is_active=True)
+
+        if category_slug:
+            questions = questions.filter(category__slug=category_slug)
+        if difficulty:
+            questions = questions.filter(difficulty=difficulty)
+
+        questions = list(questions.prefetch_related("category"))
+
+        if not questions:
+            return Response(
+                {"detail": "No practice questions available."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Select random questions
+        selected = random.sample(questions, min(count, len(questions)))  # nosec B311
+
+        serializer = QuestionSerializer(selected, many=True)
         return Response(serializer.data)
 
 

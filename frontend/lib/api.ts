@@ -154,6 +154,21 @@ export const api = {
       });
     },
 
+    getPractice: async (
+      deviceId?: string,
+      options?: { count?: number; category?: string; difficulty?: string }
+    ) => {
+      const params = new URLSearchParams();
+      if (options?.count) params.append('count', options.count.toString());
+      if (options?.category) params.append('category', options.category);
+      if (options?.difficulty) params.append('difficulty', options.difficulty);
+
+      return apiRequest(`/quizzes/practice/random/?${params.toString()}`, {
+        method: 'GET',
+        deviceId,
+      });
+    },
+
     submitAnswer: async (
       data: {
         quiz_id: number;
