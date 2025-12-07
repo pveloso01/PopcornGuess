@@ -68,6 +68,16 @@ class User(AbstractUser):
     # These demonstrate structure but don't define specific requirements yet
     # TODO: Add specific user fields as needed (e.g., avatar, bio, stats, etc.)
 
+    # Friends relationship for social features
+    friends = models.ManyToManyField(
+        "self",
+        symmetrical=True,
+        blank=True,
+        related_name="friend_of",
+        verbose_name=_("friends"),
+        help_text=_("Friends for social leaderboards and challenges"),
+    )
+
     # Set email as the USERNAME_FIELD (for authentication)
     # Username will be used for display purposes
     USERNAME_FIELD = "email"
