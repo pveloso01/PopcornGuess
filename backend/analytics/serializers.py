@@ -1,21 +1,14 @@
 """
-Serializers for Analytics API endpoints.
+Serializers for analytics app.
 """
 
 from rest_framework import serializers
 
-from .models import AnonymousUser, DailyQuizStats, Streak, UserProgress, UserStats
+from .models import AnonymousUser, Streak, UserProgress, UserStats
 
 
-class DeviceRegistrationSerializer(serializers.Serializer):
-    """Serializer for registering a new anonymous device."""
-
-    device_id = serializers.UUIDField(required=False, allow_null=True)
-    timezone_name = serializers.CharField(max_length=50, default="UTC")
-
-
-class DeviceResponseSerializer(serializers.ModelSerializer):
-    """Serializer for device registration response."""
+class AnonymousUserSerializer(serializers.ModelSerializer):
+    """Serializer for anonymous user registration and tracking."""
 
     class Meta:
         model = AnonymousUser
@@ -26,10 +19,11 @@ class DeviceResponseSerializer(serializers.ModelSerializer):
             "timezone_name",
             "notifications_enabled",
         ]
+        read_only_fields = ["device_id", "first_seen", "last_seen"]
 
 
 class StreakSerializer(serializers.ModelSerializer):
-    """Serializer for user streak data."""
+    """Serializer for streak data."""
 
     class Meta:
         model = Streak
@@ -38,15 +32,15 @@ class StreakSerializer(serializers.ModelSerializer):
             "best_streak",
             "last_played_date",
             "streak_freezes_available",
-            "streak_freezes_earned",
             "total_days_played",
         ]
+        read_only_fields = fields
 
 
 class UserStatsSerializer(serializers.ModelSerializer):
     """Serializer for user statistics."""
 
-    accuracy = serializers.FloatField(read_only=True)
+    accuracy = serializers.ReadOnlyField()
 
     class Meta:
         model = UserStats
@@ -59,18 +53,19 @@ class UserStatsSerializer(serializers.ModelSerializer):
             "total_score",
             "average_score",
             "best_score",
+            "accuracy",
             "fastest_completion_seconds",
             "average_completion_seconds",
             "global_rank",
-            "accuracy",
         ]
+        read_only_fields = fields
 
 
 class UserProgressSerializer(serializers.ModelSerializer):
-    """Serializer for quiz progress."""
+    """Serializer for user quiz progress."""
 
-    percentage_score = serializers.FloatField(read_only=True)
-    is_perfect_score = serializers.BooleanField(read_only=True)
+    percentage_score = serializers.ReadOnlyField()
+    is_perfect_score = serializers.ReadOnlyField()
 
     class Meta:
         model = UserProgress
@@ -88,60 +83,28 @@ class UserProgressSerializer(serializers.ModelSerializer):
             "percentage_score",
             "is_perfect_score",
         ]
-
-
-class ProgressUpdateSerializer(serializers.Serializer):
-    """Serializer for updating quiz progress."""
-
-    quiz_id = serializers.IntegerField()
-    score = serializers.IntegerField(min_value=0)
-    total_questions = serializers.IntegerField(min_value=1)
-    attempts_used = serializers.IntegerField(min_value=0)
-    answers = serializers.ListField(child=serializers.DictField(), default=list)
-    time_taken_seconds = serializers.IntegerField(min_value=0, required=False)
-    is_completed = serializers.BooleanField(default=False)
-
-
-class LeaderboardEntrySerializer(serializers.Serializer):
-    """Serializer for leaderboard entries."""
-
-    rank = serializers.IntegerField()
-    username = serializers.CharField()
-    score = serializers.IntegerField()
-    streak = serializers.IntegerField()
-    is_current_user = serializers.BooleanField()
-
-
-class DailyStatsSerializer(serializers.Serializer):
-    """Serializer for daily community statistics."""
-
-    date = serializers.DateField()
-    total_players = serializers.IntegerField()
-    average_score = serializers.FloatField()
-    completion_rate = serializers.FloatField()
-    most_common_wrong_answers = serializers.ListField(child=serializers.CharField())
-
-
-class StreakMilestoneSerializer(serializers.Serializer):
-    """Serializer for streak milestone celebrations."""
-
-    milestone = serializers.IntegerField()
-    message = serializers.CharField()
-    badge_name = serializers.CharField()
-    is_new = serializers.BooleanField()
-
-
-class DailyQuizStatsSerializer(serializers.ModelSerializer):
-    """Serializer for daily quiz statistics."""
-
-    completion_rate = serializers.FloatField(read_only=True)
-
-    class Meta:
-        model = DailyQuizStats
-        fields = [
-            "date",
-            "total_attempts",
-            "total_completions",
-            "average_score",
-            "completion_rate",
+        read_only_fields = [
+            "id",
+            "started_at",
+            "percentage_score",
+            "is_perfect_score",
         ]
+
+
+class AnonymousSyncRequestSerializer(serializers.Serializer):
+    """Serializer for anonymous user sync request."""
+
+    device_id = serializers.UUIDField()
+    progress_data = serializers.JSONField(required=False)
+    streak_data = serializers.JSONField(required=False)
+    stats_data = serializers.JSONField(required=False)
+
+
+class AnonymousSyncResponseSerializer(serializers.Serializer):
+    """Serializer for anonymous user sync response."""
+
+    device_id = serializers.UUIDField()
+    streak = StreakSerializer(required=False)
+    stats = UserStatsSerializer(required=False)
+    progress = UserProgressSerializer(many=True, required=False)
+    synced_at = serializers.DateTimeField()

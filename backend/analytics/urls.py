@@ -1,50 +1,40 @@
 """
-URL configuration for Analytics API.
+URL configuration for analytics app.
 """
 
 from django.urls import path
 
-from .views import (
-    DailyStatsView,
-    FriendsLeaderboardView,
-    LeaderboardView,
-    MigrateProgressView,
-    MonthlyLeaderboardView,
-    ProgressView,
-    RegisterDeviceView,
-    StreakMilestoneView,
-    StreakView,
-    UserStatsView,
-    WeeklyLeaderboardView,
-)
+from . import views
+
+app_name = "analytics"
 
 urlpatterns = [
-    path("device/", RegisterDeviceView.as_view(), name="register-device"),
-    path("streak/", StreakView.as_view(), name="streak"),
-    path("streak/milestone/", StreakMilestoneView.as_view(), name="streak-milestone"),
-    path("stats/", UserStatsView.as_view(), name="user-stats"),
-    path("stats/daily/", DailyStatsView.as_view(), name="daily-stats"),
-    path("progress/<int:quiz_id>/", ProgressView.as_view(), name="progress"),
-    path("leaderboards/global/", LeaderboardView.as_view(), name="leaderboard-global"),
+    # Anonymous user endpoints
     path(
-        "leaderboards/weekly/",
-        WeeklyLeaderboardView.as_view(),
-        name="leaderboard-weekly",
+        "anonymous/register/",
+        views.register_anonymous_user,
+        name="anonymous-register",
     ),
     path(
-        "leaderboards/monthly/",
-        MonthlyLeaderboardView.as_view(),
-        name="leaderboard-monthly",
+        "anonymous/sync/",
+        views.sync_anonymous_data,
+        name="anonymous-sync",
+    ),
+    # Streak endpoints
+    path(
+        "streaks/current/",
+        views.get_current_streak,
+        name="streak-current",
     ),
     path(
-        "leaderboards/friends/",
-        FriendsLeaderboardView.as_view(),
-        name="leaderboard-friends",
+        "streaks/update/",
+        views.update_streak,
+        name="streak-update",
     ),
+    # Stats endpoints
     path(
-        "migrate-progress/",
-        MigrateProgressView.as_view(),
-        name="migrate-progress",
+        "stats/me/",
+        views.get_user_stats,
+        name="stats-me",
     ),
 ]
-

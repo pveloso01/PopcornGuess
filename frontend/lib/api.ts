@@ -1,0 +1,132 @@
+/**
+ * API client for PopcornGuess backend
+ */
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+
+interface RequestOptions extends RequestInit {
+  deviceId?: string;
+}
+
+/**
+ * Make an API request with automatic device ID injection
+ */
+async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const { deviceId, headers, ...fetchOptions } = options;
+
+  const requestHeaders: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...headers,
+  };
+
+  // Add device ID header if provided
+  if (deviceId) {
+    requestHeaders['X-Device-ID'] = deviceId;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...fetchOptions,
+    headers: requestHeaders,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * API client methods
+ */
+export const api = {
+  // Anonymous user endpoints
+  anonymous: {
+    register: async (data?: { timezone_name?: string; notifications_enabled?: boolean }) => {
+      return apiRequest('/anonymous/register/', {
+        method: 'POST',
+        body: JSON.stringify(data || {}),
+      });
+    },
+
+    sync: async (
+      deviceId: string,
+      data?: {
+        progress_data?: unknown;
+        streak_data?: unknown;
+        stats_data?: unknown;
+      }
+    ) => {
+      return apiRequest('/anonymous/sync/', {
+        method: 'POST',
+        deviceId,
+        body: JSON.stringify({
+          device_id: deviceId,
+          ...data,
+        }),
+      });
+    },
+  },
+
+  // Streak endpoints
+  streaks: {
+    getCurrent: async (deviceId?: string) => {
+      return apiRequest('/streaks/current/', {
+        method: 'GET',
+        deviceId,
+      });
+    },
+
+    update: async (deviceId?: string) => {
+      return apiRequest('/streaks/update/', {
+        method: 'POST',
+        deviceId,
+      });
+    },
+  },
+
+  // Stats endpoints
+  stats: {
+    getMe: async (deviceId?: string) => {
+      return apiRequest('/stats/me/', {
+        method: 'GET',
+        deviceId,
+      });
+    },
+  },
+
+  // Quiz endpoints
+  quizzes: {
+    getDaily: async (deviceId?: string) => {
+      return apiRequest('/quizzes/daily/', {
+        method: 'GET',
+        deviceId,
+      });
+    },
+
+    submitAnswer: async (
+      data: {
+        question_id: number;
+        answer: string;
+        attempt_number: number;
+      },
+      deviceId?: string
+    ) => {
+      return apiRequest('/quizzes/submit-answer/', {
+        method: 'POST',
+        deviceId,
+        body: JSON.stringify(data),
+      });
+    },
+
+    getResults: async (quizId: number, deviceId?: string) => {
+      return apiRequest(`/quizzes/${quizId}/results/`, {
+        method: 'GET',
+        deviceId,
+      });
+    },
+  },
+};
+
+export default api;

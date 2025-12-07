@@ -1,852 +1,245 @@
 """
-API views for analytics and streak tracking.
+API views for analytics and user tracking.
 """
 
-import uuid
-
-from django.contrib.auth import get_user_model
-from django.db import models
-from django.db.models import Avg, Count
 from django.utils import timezone
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
-from quizzes.models import DailyPuzzle, Quiz
-
-User = get_user_model()
-
-from .models import AnonymousUser, DailyQuizStats, Streak, UserProgress, UserStats
+from .models import AnonymousUser, Streak, UserProgress, UserStats
 from .serializers import (
-    DailyQuizStatsSerializer,
-    DeviceRegistrationSerializer,
-    DeviceResponseSerializer,
-    LeaderboardEntrySerializer,
-    ProgressUpdateSerializer,
-    StreakMilestoneSerializer,
+    AnonymousSyncRequestSerializer,
+    AnonymousSyncResponseSerializer,
+    AnonymousUserSerializer,
     StreakSerializer,
     UserProgressSerializer,
     UserStatsSerializer,
 )
 
 
-class RegisterDeviceView(APIView):
-    """Register or retrieve an anonymous device."""
+@extend_schema(
+    summary="Register anonymous user",
+    description=(
+        "Generate and register a new device ID for anonymous user tracking. "
+        "This allows users to play without sign-up while still tracking progress."
+    ),
+    tags=["anonymous"],
+    responses={
+        201: AnonymousUserSerializer,
+        400: OpenApiResponse(description="Validation error"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def register_anonymous_user(request):  # type: ignore[no-untyped-def]
+    """Register a new anonymous user and return device ID."""
+    # Check if device_id is provided in request
+    serializer = AnonymousUserSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Register anonymous device",
-        description=(
-            "Register a new anonymous device or retrieve existing one. "
-            "This enables tracking progress without requiring user registration, "
-            "reducing friction for new users (like Wordle's approach)."
+    # Create new anonymous user
+    anonymous_user = AnonymousUser.objects.create(
+        timezone_name=serializer.validated_data.get("timezone_name", "UTC"),
+        notifications_enabled=serializer.validated_data.get(
+            "notifications_enabled", False
         ),
-        tags=["analytics"],
-        request=DeviceRegistrationSerializer,
-        responses={
-            200: DeviceResponseSerializer,
-            201: DeviceResponseSerializer,
-        },
     )
-    def post(self, request):  # type: ignore[no-untyped-def]
-        """Register or retrieve a device."""
-        serializer = DeviceRegistrationSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
 
-        device_id = serializer.validated_data.get("device_id")
-        timezone_name = serializer.validated_data.get("timezone_name", "UTC")
+    # Create associated streak and stats
+    Streak.objects.create(anonymous_user=anonymous_user)
+    UserStats.objects.create(anonymous_user=anonymous_user)
 
-        if device_id:
-            # Try to retrieve existing device
-            try:
-                device = AnonymousUser.objects.get(device_id=device_id)
-                device.last_seen = timezone.now()
-                device.save()
-                return Response(
-                    DeviceResponseSerializer(device).data,
-                    status=status.HTTP_200_OK,
-                )
-            except AnonymousUser.DoesNotExist:
-                pass
+    response_serializer = AnonymousUserSerializer(anonymous_user)
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
-        # Create new device
-        device = AnonymousUser.objects.create(
-            device_id=device_id or uuid.uuid4(),
-            timezone_name=timezone_name,
-        )
 
-        # Also create streak and stats records
-        Streak.objects.create(anonymous_user=device)
-        UserStats.objects.create(anonymous_user=device)
+@extend_schema(
+    summary="Sync anonymous user data",
+    description=(
+        "Sync progress, streaks, and stats for an anonymous user. "
+        "Used to synchronize data from localStorage with the server."
+    ),
+    tags=["anonymous"],
+    request=AnonymousSyncRequestSerializer,
+    responses={
+        200: AnonymousSyncResponseSerializer,
+        404: OpenApiResponse(description="Anonymous user not found"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def sync_anonymous_data(request):  # type: ignore[no-untyped-def]
+    """Sync anonymous user data with server."""
+    serializer = AnonymousSyncRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
+    device_id = serializer.validated_data["device_id"]
+
+    try:
+        anonymous_user = AnonymousUser.objects.get(device_id=device_id)
+    except AnonymousUser.DoesNotExist:
         return Response(
-            DeviceResponseSerializer(device).data,
-            status=status.HTTP_201_CREATED,
-        )
-
-
-class StreakView(APIView):
-    """Get and update streak information."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Get current streak",
-        description=(
-            "Retrieve the current streak information for a device. "
-            "Streaks leverage psychological effects like loss aversion "
-            "to drive daily engagement."
-        ),
-        tags=["analytics"],
-        responses={
-            200: StreakSerializer,
-            404: OpenApiResponse(description="Device not found"),
-        },
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Get streak for device."""
-        device_id = request.headers.get("X-Device-ID")
-
-        if not device_id:
-            return Response(
-                {"detail": "X-Device-ID header required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            device = AnonymousUser.objects.get(device_id=device_id)
-            streak = Streak.objects.get(anonymous_user=device)
-        except (AnonymousUser.DoesNotExist, Streak.DoesNotExist):
-            return Response(
-                {"detail": "Device not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        serializer = StreakSerializer(streak)
-        return Response(serializer.data)
-
-    @extend_schema(
-        summary="Use a streak freeze",
-        description=(
-            "Use a streak freeze to protect the streak from breaking. "
-            "Freezes are earned at milestones (7, 30, 100 days) and can be "
-            "used when a day is missed."
-        ),
-        tags=["analytics"],
-        responses={
-            200: StreakSerializer,
-            400: OpenApiResponse(description="No freezes available"),
-            404: OpenApiResponse(description="Device not found"),
-        },
-    )
-    def post(self, request):  # type: ignore[no-untyped-def]
-        """Use a streak freeze for device."""
-        device_id = request.headers.get("X-Device-ID")
-
-        if not device_id:
-            return Response(
-                {"detail": "X-Device-ID header required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            device = AnonymousUser.objects.get(device_id=device_id)
-            streak = Streak.objects.get(anonymous_user=device)
-        except (AnonymousUser.DoesNotExist, Streak.DoesNotExist):
-            return Response(
-                {"detail": "Device not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # Check if freeze is available
-        if not streak._can_use_streak_freeze():
-            return Response(
-                {"detail": "No streak freezes available."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Use the freeze
-        streak._use_streak_freeze()
-        streak.save()
-
-        serializer = StreakSerializer(streak)
-        return Response(serializer.data)
-
-
-class UserStatsView(APIView):
-    """Get user statistics."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Get user statistics",
-        description="Retrieve aggregated statistics for a user/device.",
-        tags=["analytics"],
-        responses={
-            200: UserStatsSerializer,
-            404: OpenApiResponse(description="Device not found"),
-        },
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Get stats for device."""
-        device_id = request.headers.get("X-Device-ID")
-
-        if not device_id:
-            return Response(
-                {"detail": "X-Device-ID header required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            device = AnonymousUser.objects.get(device_id=device_id)
-            stats = UserStats.objects.get(anonymous_user=device)
-        except (AnonymousUser.DoesNotExist, UserStats.DoesNotExist):
-            return Response(
-                {"detail": "Device not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        serializer = UserStatsSerializer(stats)
-        return Response(serializer.data)
-
-
-class ProgressView(APIView):
-    """Get and update quiz progress."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Get quiz progress",
-        description="Retrieve progress for a specific quiz.",
-        tags=["analytics"],
-        responses={
-            200: UserProgressSerializer,
-            404: OpenApiResponse(description="Progress not found"),
-        },
-    )
-    def get(self, request, quiz_id):  # type: ignore[no-untyped-def]
-        """Get progress for a quiz."""
-        device_id = request.headers.get("X-Device-ID")
-
-        if not device_id:
-            return Response(
-                {"detail": "X-Device-ID header required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            device = AnonymousUser.objects.get(device_id=device_id)
-            progress = UserProgress.objects.get(
-                anonymous_user=device,
-                quiz_id=quiz_id,
-            )
-        except (AnonymousUser.DoesNotExist, UserProgress.DoesNotExist):
-            return Response(
-                {"detail": "Progress not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        serializer = UserProgressSerializer(progress)
-        return Response(serializer.data)
-
-    @extend_schema(
-        summary="Update quiz progress",
-        description="Save or update progress for a quiz.",
-        tags=["analytics"],
-        request=ProgressUpdateSerializer,
-        responses={
-            200: UserProgressSerializer,
-            201: UserProgressSerializer,
-            400: OpenApiResponse(description="Validation error"),
-        },
-    )
-    def post(self, request, quiz_id):  # type: ignore[no-untyped-def]
-        """Update progress for a quiz."""
-        device_id = request.headers.get("X-Device-ID")
-
-        if not device_id:
-            return Response(
-                {"detail": "X-Device-ID header required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        serializer = ProgressUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        try:
-            device = AnonymousUser.objects.get(device_id=device_id)
-        except AnonymousUser.DoesNotExist:
-            return Response(
-                {"detail": "Device not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        try:
-            quiz = Quiz.objects.get(id=quiz_id)
-        except Quiz.DoesNotExist:
-            return Response(
-                {"detail": "Quiz not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # Get or create progress
-        progress, created = UserProgress.objects.get_or_create(
-            anonymous_user=device,
-            quiz=quiz,
-            defaults={
-                "score": serializer.validated_data["score"],
-                "total_questions": serializer.validated_data["total_questions"],
-                "attempts_used": serializer.validated_data["attempts_used"],
-                "answers": serializer.validated_data.get("answers", []),
-                "time_taken_seconds": serializer.validated_data.get(
-                    "time_taken_seconds"
-                ),
-                "is_completed": serializer.validated_data["is_completed"],
-            },
-        )
-
-        if not created:
-            # Update existing progress
-            progress.score = serializer.validated_data["score"]
-            progress.total_questions = serializer.validated_data["total_questions"]
-            progress.attempts_used = serializer.validated_data["attempts_used"]
-            progress.answers = serializer.validated_data.get("answers", [])
-            if serializer.validated_data.get("time_taken_seconds"):
-                progress.time_taken_seconds = serializer.validated_data[
-                    "time_taken_seconds"
-                ]
-            progress.is_completed = serializer.validated_data["is_completed"]
-
-            if progress.is_completed and not progress.completed_at:
-                progress.complete()
-
-                # Update streak
-                streak = Streak.objects.get(anonymous_user=device)
-                streak.update_streak()
-
-                # Update stats
-                stats = UserStats.objects.get(anonymous_user=device)
-                stats.update_from_progress(progress)
-
-                # Update daily quiz stats
-                today = timezone.now().date()
-                daily_stats, _ = DailyQuizStats.objects.get_or_create(
-                    date=today,
-                    quiz=quiz,
-                )
-                daily_stats.record_completion(progress.score)
-
-            progress.save()
-
-            # Record attempt for daily stats (even if not completed)
-            today = timezone.now().date()
-            daily_stats, _ = DailyQuizStats.objects.get_or_create(
-                date=today,
-                quiz=quiz,
-            )
-            if created:
-                daily_stats.record_attempt()
-
-        response_serializer = UserProgressSerializer(progress)
-        return Response(
-            response_serializer.data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
-
-
-class LeaderboardView(APIView):
-    """Get leaderboard data."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Get leaderboard",
-        description=("Retrieve the global leaderboard showing top players by score."),
-        tags=["analytics"],
-        responses={200: LeaderboardEntrySerializer(many=True)},
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Get global leaderboard."""
-        device_id = request.headers.get("X-Device-ID")
-
-        # Get top 100 by total score
-        top_stats = UserStats.objects.exclude(total_score=0).order_by("-total_score")[
-            :100
-        ]
-
-        leaderboard = []
-        for rank, stats in enumerate(top_stats, start=1):
-            # Get streak for this user
-            if stats.anonymous_user:
-                try:
-                    streak_obj = Streak.objects.get(anonymous_user=stats.anonymous_user)
-                    streak = streak_obj.current_streak
-                except Streak.DoesNotExist:
-                    streak = 0
-                username = f"Player {str(stats.anonymous_user.device_id)[:8]}"
-                is_current = str(stats.anonymous_user.device_id) == device_id
-            elif stats.user:
-                try:
-                    streak_obj = Streak.objects.get(user=stats.user)
-                    streak = streak_obj.current_streak
-                except Streak.DoesNotExist:
-                    streak = 0
-                username = stats.user.username
-                is_current = False  # Would need to check auth
-            else:
-                continue
-
-            leaderboard.append(
-                {
-                    "rank": rank,
-                    "username": username,
-                    "score": stats.total_score,
-                    "streak": streak,
-                    "is_current_user": is_current,
-                }
-            )
-
-        serializer = LeaderboardEntrySerializer(leaderboard, many=True)
-        return Response(serializer.data)
-
-
-class WeeklyLeaderboardView(APIView):
-    """Get weekly leaderboard data."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Get weekly leaderboard",
-        description=("Retrieve the weekly leaderboard showing top players this week."),
-        tags=["analytics"],
-        responses={200: LeaderboardEntrySerializer(many=True)},
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Get weekly leaderboard."""
-        device_id = request.headers.get("X-Device-ID")
-        today = timezone.now().date()
-        week_start = today - timezone.timedelta(days=today.weekday())
-
-        # Get progress from this week
-        weekly_progress = (
-            UserProgress.objects.filter(
-                completed_at__gte=week_start,
-                is_completed=True,
-            )
-            .values("anonymous_user", "user")
-            .annotate(
-                total_score=models.Sum("score"),
-                total_completed=Count("id"),
-            )
-            .order_by("-total_score")[:100]
-        )
-
-        leaderboard = []
-        for rank, progress in enumerate(weekly_progress, start=1):
-            if progress["anonymous_user"]:
-                try:
-                    anon_user = AnonymousUser.objects.get(id=progress["anonymous_user"])
-                    username = f"Player {str(anon_user.device_id)[:8]}"
-                    is_current = str(anon_user.device_id) == device_id
-                except AnonymousUser.DoesNotExist:
-                    continue
-            elif progress["user"]:
-                try:
-                    user = User.objects.get(id=progress["user"])
-                    username = user.username
-                    is_current = False
-                except User.DoesNotExist:
-                    continue
-            else:
-                continue
-
-            leaderboard.append(
-                {
-                    "rank": rank,
-                    "username": username,
-                    "score": progress["total_score"],
-                    "streak": 0,  # Weekly doesn't show streak
-                    "is_current_user": is_current,
-                }
-            )
-
-        serializer = LeaderboardEntrySerializer(leaderboard, many=True)
-        return Response(serializer.data)
-
-
-class MonthlyLeaderboardView(APIView):
-    """Get monthly leaderboard data."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Get monthly leaderboard",
-        description=("Retrieve the monthly leaderboard showing top players this month."),
-        tags=["analytics"],
-        responses={200: LeaderboardEntrySerializer(many=True)},
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Get monthly leaderboard."""
-        device_id = request.headers.get("X-Device-ID")
-        today = timezone.now().date()
-        month_start = today.replace(day=1)
-
-        # Get progress from this month
-        monthly_progress = (
-            UserProgress.objects.filter(
-                completed_at__gte=month_start,
-                is_completed=True,
-            )
-            .values("anonymous_user", "user")
-            .annotate(
-                total_score=models.Sum("score"),
-                total_completed=Count("id"),
-            )
-            .order_by("-total_score")[:100]
-        )
-
-        leaderboard = []
-        for rank, progress in enumerate(monthly_progress, start=1):
-            if progress["anonymous_user"]:
-                try:
-                    anon_user = AnonymousUser.objects.get(id=progress["anonymous_user"])
-                    username = f"Player {str(anon_user.device_id)[:8]}"
-                    is_current = str(anon_user.device_id) == device_id
-                except AnonymousUser.DoesNotExist:
-                    continue
-            elif progress["user"]:
-                try:
-                    user = User.objects.get(id=progress["user"])
-                    username = user.username
-                    is_current = False
-                except User.DoesNotExist:
-                    continue
-            else:
-                continue
-
-            leaderboard.append(
-                {
-                    "rank": rank,
-                    "username": username,
-                    "score": progress["total_score"],
-                    "streak": 0,  # Monthly doesn't show streak
-                    "is_current_user": is_current,
-                }
-            )
-
-        serializer = LeaderboardEntrySerializer(leaderboard, many=True)
-        return Response(serializer.data)
-
-
-class FriendsLeaderboardView(APIView):
-    """Get friends leaderboard data."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Get friends leaderboard",
-        description=(
-            "Retrieve the friends leaderboard showing top friends by score. "
-            "Requires authentication."
-        ),
-        tags=["analytics"],
-        responses={200: LeaderboardEntrySerializer(many=True)},
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Get friends leaderboard."""
-        if not request.user.is_authenticated:
-            return Response(
-                {"detail": "Authentication required for friends leaderboard."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        # Get user's friends
-        friends = list(request.user.friends.all())
-        if not friends:
-            return Response([])
-
-        # Get stats for friends
-        friend_stats = (
-            UserStats.objects.filter(user__in=friends)
-            .exclude(total_score=0)
-            .order_by("-total_score")
-        )
-
-        leaderboard = []
-        for rank, stats in enumerate(friend_stats, start=1):
-            if stats.user:
-                try:
-                    streak_obj = Streak.objects.get(user=stats.user)
-                    streak = streak_obj.current_streak
-                except Streak.DoesNotExist:
-                    streak = 0
-
-                leaderboard.append(
-                    {
-                        "rank": rank,
-                        "username": stats.user.username,
-                        "score": stats.total_score,
-                        "streak": streak,
-                        "is_current_user": stats.user.id == request.user.id,
-                    }
-                )
-
-        serializer = LeaderboardEntrySerializer(leaderboard, many=True)
-        return Response(serializer.data)
-
-
-class StreakMilestoneView(APIView):
-    """Check for streak milestones."""
-
-    permission_classes = [AllowAny]
-
-    MILESTONES = {
-        3: ("3-Day Streak!", "Warming Up", "streak_3"),
-        7: ("One Week Streak!", "Week Warrior", "streak_7"),
-        14: ("Two Week Streak!", "Dedicated Player", "streak_14"),
-        30: ("One Month Streak!", "Monthly Master", "streak_30"),
-        50: ("50-Day Streak!", "Half Century", "streak_50"),
-        100: ("100-Day Streak!", "Century Champion", "streak_100"),
-        365: ("One Year Streak!", "Legend", "streak_365"),
-    }
-
-    @extend_schema(
-        summary="Check streak milestones",
-        description=(
-            "Check if the user has reached any streak milestones. "
-            "Milestones trigger celebration animations."
-        ),
-        tags=["analytics"],
-        responses={
-            200: StreakMilestoneSerializer,
-            404: OpenApiResponse(description="No milestone reached"),
-        },
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Check for new streak milestones."""
-        device_id = request.headers.get("X-Device-ID")
-
-        if not device_id:
-            return Response(
-                {"detail": "X-Device-ID header required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            device = AnonymousUser.objects.get(device_id=device_id)
-            streak = Streak.objects.get(anonymous_user=device)
-        except (AnonymousUser.DoesNotExist, Streak.DoesNotExist):
-            return Response(
-                {"detail": "Device not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # Check if current streak hits a milestone
-        current = streak.current_streak
-        if current in self.MILESTONES:
-            message, badge_name, _ = self.MILESTONES[current]
-            result = {
-                "milestone": current,
-                "message": message,
-                "badge_name": badge_name,
-                "is_new": True,  # Would check against a "seen" record
-            }
-            serializer = StreakMilestoneSerializer(result)
-            return Response(serializer.data)
-
-        return Response(
-            {"detail": "No milestone reached."},
+            {"detail": "Anonymous user not found. Please register first."},
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    # Update last seen
+    anonymous_user.last_seen = timezone.now()
+    anonymous_user.save()
 
-class DailyStatsView(APIView):
-    """Get community statistics for today's quiz."""
+    # Get or create streak and stats
+    streak, _ = Streak.objects.get_or_create(anonymous_user=anonymous_user)
+    stats, _ = UserStats.objects.get_or_create(anonymous_user=anonymous_user)
 
-    permission_classes = [AllowAny]
+    # Get recent progress
+    progress = UserProgress.objects.filter(anonymous_user=anonymous_user).order_by(
+        "-started_at"
+    )[:10]
 
-    @extend_schema(
-        summary="Get daily community stats",
-        description=(
-            "Retrieve aggregate statistics for today's quiz. "
-            "Shows how the community performed."
-        ),
-        tags=["analytics"],
-        responses={
-            200: {"description": "Daily stats"},
-            404: OpenApiResponse(description="No daily puzzle today"),
-        },
-    )
-    def get(self, request):  # type: ignore[no-untyped-def]
-        """Get today's community stats."""
-        today = timezone.now().date()
-        daily_puzzle = DailyPuzzle.get_today()
+    # Prepare response
+    response_data = {
+        "device_id": device_id,
+        "streak": StreakSerializer(streak).data,
+        "stats": UserStatsSerializer(stats).data,
+        "progress": UserProgressSerializer(progress, many=True).data,
+        "synced_at": timezone.now(),
+    }
 
-        if not daily_puzzle:
-            return Response(
-                {"detail": "No daily puzzle for today."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+    response_serializer = AnonymousSyncResponseSerializer(response_data)
+    return Response(response_serializer.data)
 
-        # Get or create daily stats for today's quiz
-        daily_stats, _ = DailyQuizStats.objects.get_or_create(
-            date=today,
-            quiz=daily_puzzle.quiz,
+
+@extend_schema(
+    summary="Get current streak",
+    description="Get the current streak for the authenticated or anonymous user.",
+    tags=["streaks"],
+    responses={
+        200: StreakSerializer,
+        404: OpenApiResponse(description="Streak not found"),
+    },
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_current_streak(request):  # type: ignore[no-untyped-def]
+    """Get current streak for user."""
+    # Check if user is authenticated
+    if request.user.is_authenticated:
+        try:
+            streak = Streak.objects.get(user=request.user)
+        except Streak.DoesNotExist:
+            streak = Streak.objects.create(user=request.user)
+    else:
+        # Try to get device_id from header or query param
+        device_id = request.headers.get("X-Device-ID") or request.query_params.get(
+            "device_id"
         )
-
-        serializer = DailyQuizStatsSerializer(daily_stats)
-        return Response(serializer.data)
-
-
-class MigrateProgressView(APIView):
-    """Migrate anonymous user progress to authenticated user."""
-
-    permission_classes = [AllowAny]
-
-    @extend_schema(
-        summary="Migrate anonymous progress to authenticated user",
-        description=(
-            "Transfer all progress, streaks, and stats from an anonymous device "
-            "to a newly registered or logged-in authenticated user. "
-            "This allows users to retain their progress when creating an account."
-        ),
-        tags=["analytics"],
-        request={
-            "application/json": {
-                "type": "object",
-                "properties": {
-                    "device_id": {
-                        "type": "string",
-                        "format": "uuid",
-                        "description": "Anonymous device ID to migrate from",
-                    }
-                },
-                "required": ["device_id"],
-            }
-        },
-        responses={
-            200: {"description": "Progress migrated successfully"},
-            400: OpenApiResponse(description="Invalid request"),
-            401: OpenApiResponse(description="Authentication required"),
-            404: OpenApiResponse(description="Device not found"),
-        },
-    )
-    def post(self, request):  # type: ignore[no-untyped-def]
-        """Migrate anonymous progress to authenticated user."""
-        if not request.user.is_authenticated:
-            return Response(
-                {"detail": "Authentication required to migrate progress."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        device_id = request.data.get("device_id")
         if not device_id:
             return Response(
-                {"detail": "device_id is required."},
+                {"detail": "Device ID required for anonymous users."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
-            # Get the anonymous user
-            anon_user = AnonymousUser.objects.get(device_id=device_id)
+            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
+            streak, _ = Streak.objects.get_or_create(anonymous_user=anonymous_user)
         except AnonymousUser.DoesNotExist:
             return Response(
-                {"detail": "Device not found."},
+                {"detail": "Anonymous user not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Check if already migrated
-        if anon_user.user is not None:
+    serializer = StreakSerializer(streak)
+    return Response(serializer.data)
+
+
+@extend_schema(
+    summary="Update streak",
+    description=(
+        "Update streak after quiz completion. Called automatically after "
+        "completing a daily quiz."
+    ),
+    tags=["streaks"],
+    responses={
+        200: StreakSerializer,
+        404: OpenApiResponse(description="Streak not found"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def update_streak(request):  # type: ignore[no-untyped-def]
+    """Update streak after quiz completion."""
+    # Check if user is authenticated
+    if request.user.is_authenticated:
+        try:
+            streak = Streak.objects.get(user=request.user)
+        except Streak.DoesNotExist:
+            streak = Streak.objects.create(user=request.user)
+    else:
+        # Try to get device_id from header
+        device_id = request.headers.get("X-Device-ID")
+        if not device_id:
             return Response(
-                {"detail": "Device already migrated to another user."},
+                {"detail": "Device ID required for anonymous users."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Get or create streak and stats for authenticated user
-        user_streak, _ = Streak.objects.get_or_create(user=request.user)
-        user_stats, _ = UserStats.objects.get_or_create(user=request.user)
-
-        # Migrate streak (keep the best one)
         try:
-            anon_streak = Streak.objects.get(anonymous_user=anon_user)
-            if anon_streak.current_streak > user_streak.current_streak:
-                user_streak.current_streak = anon_streak.current_streak
-            if anon_streak.best_streak > user_streak.best_streak:
-                user_streak.best_streak = anon_streak.best_streak
-            user_streak.total_days_played += anon_streak.total_days_played
-            user_streak.streak_freezes_available += anon_streak.streak_freezes_available
-            user_streak.streak_freezes_earned += anon_streak.streak_freezes_earned
-            if anon_streak.last_played_date:
-                if (
-                    user_streak.last_played_date is None
-                    or anon_streak.last_played_date > user_streak.last_played_date
-                ):
-                    user_streak.last_played_date = anon_streak.last_played_date
-            user_streak.save()
+            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
+            streak, _ = Streak.objects.get_or_create(anonymous_user=anonymous_user)
+        except AnonymousUser.DoesNotExist:
+            return Response(
+                {"detail": "Anonymous user not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-            # Delete the anonymous streak
-            anon_streak.delete()
-        except Streak.DoesNotExist:
-            pass
+    # Update the streak
+    completion_date = timezone.now().date()
+    streak_extended = streak.update_streak(completion_date)
 
-        # Migrate stats (merge them)
+    serializer = StreakSerializer(streak)
+    response_data = serializer.data
+    response_data["streak_extended"] = streak_extended
+
+    return Response(response_data)
+
+
+@extend_schema(
+    summary="Get user statistics",
+    description="Get statistics for the authenticated or anonymous user.",
+    tags=["analytics"],
+    responses={
+        200: UserStatsSerializer,
+        404: OpenApiResponse(description="Stats not found"),
+    },
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_user_stats(request):  # type: ignore[no-untyped-def]
+    """Get user statistics."""
+    # Check if user is authenticated
+    if request.user.is_authenticated:
+        stats, _ = UserStats.objects.get_or_create(user=request.user)
+    else:
+        # Try to get device_id from header
+        device_id = request.headers.get("X-Device-ID")
+        if not device_id:
+            return Response(
+                {"detail": "Device ID required for anonymous users."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            anon_stats = UserStats.objects.get(anonymous_user=anon_user)
-            user_stats.total_quizzes_played += anon_stats.total_quizzes_played
-            user_stats.total_quizzes_completed += anon_stats.total_quizzes_completed
-            user_stats.total_questions_answered += anon_stats.total_questions_answered
-            user_stats.total_correct_answers += anon_stats.total_correct_answers
-            user_stats.perfect_scores += anon_stats.perfect_scores
-            user_stats.total_score += anon_stats.total_score
+            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
+            stats, _ = UserStats.objects.get_or_create(anonymous_user=anonymous_user)
+        except AnonymousUser.DoesNotExist:
+            return Response(
+                {"detail": "Anonymous user not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-            # Recalculate average score
-            if user_stats.total_quizzes_completed > 0:
-                user_stats.average_score = (
-                    user_stats.total_score / user_stats.total_quizzes_completed
-                )
-
-            # Keep the best score
-            if anon_stats.best_score > user_stats.best_score:
-                user_stats.best_score = anon_stats.best_score
-
-            # Keep the fastest completion time
-            if anon_stats.fastest_completion_seconds:
-                if (
-                    user_stats.fastest_completion_seconds is None
-                    or anon_stats.fastest_completion_seconds
-                    < user_stats.fastest_completion_seconds
-                ):
-                    user_stats.fastest_completion_seconds = (
-                        anon_stats.fastest_completion_seconds
-                    )
-
-            user_stats.save()
-
-            # Delete the anonymous stats
-            anon_stats.delete()
-        except UserStats.DoesNotExist:
-            pass
-
-        # Migrate all user progress
-        UserProgress.objects.filter(anonymous_user=anon_user).update(
-            anonymous_user=None,
-            user=request.user,
-        )
-
-        # Mark the anonymous user as migrated
-        anon_user.user = request.user
-        anon_user.save()
-
-        return Response(
-            {
-                "detail": "Progress migrated successfully.",
-                "streak": user_streak.current_streak,
-                "total_score": user_stats.total_score,
-                "quizzes_completed": user_stats.total_quizzes_completed,
-            },
-            status=status.HTTP_200_OK,
-        )
+    serializer = UserStatsSerializer(stats)
+    return Response(serializer.data)
