@@ -505,3 +505,87 @@ class UserStats(models.Model):
                     self.fastest_completion_seconds = progress.time_taken_seconds
 
         self.save()
+
+
+class DailyQuizStats(models.Model):
+    """
+    Track daily community statistics for quizzes.
+
+    Shows how many people played, completion rates, etc.
+    This drives social proof and community engagement.
+    """
+
+    date = models.DateField(_("date"), unique_for_date="quiz")
+    quiz = models.ForeignKey(
+        "quizzes.Quiz",
+        on_delete=models.CASCADE,
+        related_name="daily_stats",
+        verbose_name=_("quiz"),
+    )
+
+    # Participation stats
+    total_attempts = models.PositiveIntegerField(
+        _("total attempts"),
+        default=0,
+        help_text=_("Total number of times the quiz was started"),
+    )
+    total_completions = models.PositiveIntegerField(
+        _("total completions"),
+        default=0,
+        help_text=_("Total number of times the quiz was completed"),
+    )
+
+    # Performance stats
+    average_score = models.FloatField(
+        _("average score"),
+        default=0.0,
+        help_text=_("Average score across all completions"),
+    )
+    total_score = models.PositiveIntegerField(
+        _("total score"),
+        default=0,
+        help_text=_("Sum of all scores for calculating average"),
+    )
+
+    created_at = models.DateTimeField(_("created at"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("updated at"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("daily quiz stats")
+        verbose_name_plural = _("daily quiz stats")
+        ordering = ["-date"]
+        indexes = [
+            models.Index(fields=["date", "quiz"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["date", "quiz"],
+                name="unique_daily_quiz_stats",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.quiz} stats for {self.date}"
+
+    @property
+    def completion_rate(self) -> float:
+        """Calculate completion rate percentage."""
+        if self.total_attempts == 0:
+            return 0.0
+        return (self.total_completions / self.total_attempts) * 100
+
+    def record_attempt(self) -> None:
+        """Record a quiz attempt."""
+        self.total_attempts += 1
+        self.save()
+
+    def record_completion(self, score: int) -> None:
+        """Record a quiz completion with score."""
+        self.total_completions += 1
+        self.total_score += score
+
+        # Update average score
+        if self.total_completions > 0:
+            self.average_score = self.total_score / self.total_completions
+
+        self.save()

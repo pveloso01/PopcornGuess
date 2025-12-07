@@ -16,8 +16,9 @@ from rest_framework.views import APIView
 
 from quizzes.models import DailyPuzzle, Quiz
 
-from .models import AnonymousUser, Streak, UserProgress, UserStats
+from .models import AnonymousUser, DailyQuizStats, Streak, UserProgress, UserStats
 from .serializers import (
+    DailyQuizStatsSerializer,
     DeviceRegistrationSerializer,
     DeviceResponseSerializer,
     LeaderboardEntrySerializer,
@@ -328,7 +329,24 @@ class ProgressView(APIView):
                 stats = UserStats.objects.get(anonymous_user=device)
                 stats.update_from_progress(progress)
 
+                # Update daily quiz stats
+                today = timezone.now().date()
+                daily_stats, _ = DailyQuizStats.objects.get_or_create(
+                    date=today,
+                    quiz=quiz,
+                )
+                daily_stats.record_completion(progress.score)
+
             progress.save()
+
+            # Record attempt for daily stats (even if not completed)
+            today = timezone.now().date()
+            daily_stats, _ = DailyQuizStats.objects.get_or_create(
+                date=today,
+                quiz=quiz,
+            )
+            if created:
+                daily_stats.record_attempt()
 
         response_serializer = UserProgressSerializer(progress)
         return Response(
@@ -486,23 +504,11 @@ class DailyStatsView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Get aggregate stats for today's quiz
-        progress_stats = UserProgress.objects.filter(quiz=daily_puzzle.quiz).aggregate(
-            total_players=Count("id"),
-            avg_score=Avg("score"),
-            completed_count=Count("id", filter=models.Q(is_completed=True)),
+        # Get or create daily stats for today's quiz
+        daily_stats, _ = DailyQuizStats.objects.get_or_create(
+            date=today,
+            quiz=daily_puzzle.quiz,
         )
 
-        total = progress_stats["total_players"] or 0
-        completed = progress_stats["completed_count"] or 0
-        completion_rate = (completed / total * 100) if total > 0 else 0
-
-        result = {
-            "date": today,
-            "total_players": total,
-            "average_score": progress_stats["avg_score"] or 0,
-            "completion_rate": completion_rate,
-            "most_common_wrong_answers": [],  # Would need answer tracking
-        }
-
-        return Response(result)
+        serializer = DailyQuizStatsSerializer(daily_stats)
+        return Response(serializer.data)
