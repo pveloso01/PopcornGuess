@@ -16,7 +16,7 @@ interface QuizResultsProps {
   results: {
     quiz_id: number;
     quiz_title: string;
-    score: number;
+  score: number;
     total_questions: number;
     percentage: number;
     is_perfect: boolean;
@@ -42,7 +42,7 @@ interface QuizResultsProps {
 export default function QuizResults({ results }: QuizResultsProps) {
   const {
     quiz_title,
-    score,
+  score,
     total_questions,
     percentage,
     is_perfect,
@@ -74,7 +74,7 @@ export default function QuizResults({ results }: QuizResultsProps) {
 
           <div className="text-6xl font-bold mb-2 text-gradient-gold">
             {score}/{total_questions}
-          </div>
+        </div>
 
           <p className="text-[var(--text-secondary)] text-xl mb-2">
             {Math.round(percentage)}% Correct
@@ -85,9 +85,9 @@ export default function QuizResults({ results }: QuizResultsProps) {
           {time_taken_seconds && (
             <p className="text-[var(--text-secondary)] mt-2">
               Time: {formatTime(time_taken_seconds)}
-            </p>
-          )}
-        </div>
+          </p>
+        )}
+      </div>
 
         {/* Community Stats */}
         <div className="bg-[var(--background-secondary)] rounded-lg p-6 mb-8">
@@ -123,7 +123,7 @@ export default function QuizResults({ results }: QuizResultsProps) {
         </div>
 
         {/* Share Button */}
-        <div className="mb-8">
+      <div className="mb-8">
           <ShareButton shareText={shareable_text} quizTitle={quiz_title} />
         </div>
 
@@ -149,7 +149,7 @@ export default function QuizResults({ results }: QuizResultsProps) {
                   <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mb-3">
                     <p className="text-sm text-[var(--text-secondary)] mb-1">Correct Answer:</p>
                     <p className="text-green-600 font-bold">{question.correct_answer}</p>
-                  </div>
+      </div>
 
                   {question.explanation && (
                     <div className="bg-[var(--background)] rounded-lg p-4">
@@ -164,20 +164,20 @@ export default function QuizResults({ results }: QuizResultsProps) {
               </div>
             </div>
           ))}
-        </div>
+      </div>
 
         {/* Call to Action */}
         <div className="text-center bg-gradient-amber rounded-lg p-8">
           <h3 className="text-2xl font-bold text-[var(--background)] mb-4">
             Come back tomorrow for a new challenge! 🍿
           </h3>
-          <Link
-            href="/"
+        <Link
+          href="/"
             className="inline-block px-6 py-3 bg-[var(--background)] text-[var(--text-primary)] font-bold rounded-lg hover:opacity-90 transition-opacity"
-          >
-            Back to Home
-          </Link>
-        </div>
+        >
+          Back to Home
+        </Link>
+      </div>
       </div>
     </div>
   );

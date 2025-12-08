@@ -63,39 +63,39 @@ export default function ShareButton({ shareText, quizTitle }: ShareButtonProps) 
 
       {showOptions && (
         <div className="absolute top-full mt-2 left-0 right-0 bg-[var(--background)] border border-[var(--background-secondary)] rounded-lg shadow-lg overflow-hidden z-10">
-          <button
+            <button
             onClick={() => {
               window.open(getTwitterShareUrl(shareText), '_blank');
               setShowOptions(false);
             }}
             className="w-full px-4 py-3 hover:bg-[var(--background-secondary)] transition-colors text-left flex items-center gap-3"
-          >
+            >
             <span>🐦</span>
             <span>Share on Twitter</span>
-          </button>
+            </button>
 
-          <button
+            <button
             onClick={() => {
               window.open(getWhatsAppShareUrl(shareText), '_blank');
               setShowOptions(false);
             }}
             className="w-full px-4 py-3 hover:bg-[var(--background-secondary)] transition-colors text-left flex items-center gap-3"
-          >
+            >
             <span>💬</span>
             <span>Share on WhatsApp</span>
-          </button>
+            </button>
 
-          <button
+            <button
             onClick={() => {
               handleCopy();
               setShowOptions(false);
             }}
             className="w-full px-4 py-3 hover:bg-[var(--background-secondary)] transition-colors text-left flex items-center gap-3"
-          >
+            >
             <span>{copySuccess ? '✅' : '📋'}</span>
             <span>{copySuccess ? 'Copied!' : 'Copy to Clipboard'}</span>
-          </button>
-        </div>
+            </button>
+          </div>
       )}
     </div>
   );

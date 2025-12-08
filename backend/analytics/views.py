@@ -21,9 +21,9 @@ from .serializers import (
 )
 
 
-@extend_schema(
+    @extend_schema(
     summary="Register anonymous user",
-    description=(
+        description=(
         "Generate and register a new device ID for anonymous user tracking. "
         "This allows users to play without sign-up while still tracking progress."
     ),
@@ -62,26 +62,26 @@ def register_anonymous_user(request):  # type: ignore[no-untyped-def]
     description=(
         "Sync progress, streaks, and stats for an anonymous user. "
         "Used to synchronize data from localStorage with the server."
-    ),
+        ),
     tags=["anonymous"],
     request=AnonymousSyncRequestSerializer,
-    responses={
+        responses={
         200: AnonymousSyncResponseSerializer,
         404: OpenApiResponse(description="Anonymous user not found"),
-    },
-)
+        },
+    )
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def sync_anonymous_data(request):  # type: ignore[no-untyped-def]
     """Sync anonymous user data with server."""
     serializer = AnonymousSyncRequestSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+        serializer.is_valid(raise_exception=True)
 
     device_id = serializer.validated_data["device_id"]
 
     try:
         anonymous_user = AnonymousUser.objects.get(device_id=device_id)
-    except AnonymousUser.DoesNotExist:
+            except AnonymousUser.DoesNotExist:
         return Response(
             {"detail": "Anonymous user not found. Please register first."},
             status=status.HTTP_404_NOT_FOUND,
@@ -113,15 +113,15 @@ def sync_anonymous_data(request):  # type: ignore[no-untyped-def]
     return Response(response_serializer.data)
 
 
-@extend_schema(
-    summary="Get current streak",
+    @extend_schema(
+        summary="Get current streak",
     description="Get the current streak for the authenticated or anonymous user.",
     tags=["streaks"],
-    responses={
-        200: StreakSerializer,
+        responses={
+            200: StreakSerializer,
         404: OpenApiResponse(description="Streak not found"),
-    },
-)
+        },
+    )
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def get_current_streak(request):  # type: ignore[no-untyped-def]
@@ -152,19 +152,19 @@ def get_current_streak(request):  # type: ignore[no-untyped-def]
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-    serializer = StreakSerializer(streak)
-    return Response(serializer.data)
+        serializer = StreakSerializer(streak)
+        return Response(serializer.data)
 
 
-@extend_schema(
+    @extend_schema(
     summary="Update streak",
-    description=(
+        description=(
         "Update streak after quiz completion. Called automatically after "
         "completing a daily quiz."
-    ),
+        ),
     tags=["streaks"],
-    responses={
-        200: StreakSerializer,
+        responses={
+            200: StreakSerializer,
         404: OpenApiResponse(description="Streak not found"),
     },
 )
@@ -200,22 +200,22 @@ def update_streak(request):  # type: ignore[no-untyped-def]
     completion_date = timezone.now().date()
     streak_extended = streak.update_streak(completion_date)
 
-    serializer = StreakSerializer(streak)
+        serializer = StreakSerializer(streak)
     response_data = serializer.data
     response_data["streak_extended"] = streak_extended
 
     return Response(response_data)
 
 
-@extend_schema(
-    summary="Get user statistics",
+    @extend_schema(
+        summary="Get user statistics",
     description="Get statistics for the authenticated or anonymous user.",
-    tags=["analytics"],
-    responses={
-        200: UserStatsSerializer,
+        tags=["analytics"],
+        responses={
+            200: UserStatsSerializer,
         404: OpenApiResponse(description="Stats not found"),
-    },
-)
+        },
+    )
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def get_user_stats(request):  # type: ignore[no-untyped-def]
@@ -241,20 +241,20 @@ def get_user_stats(request):  # type: ignore[no-untyped-def]
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-    serializer = UserStatsSerializer(stats)
-    return Response(serializer.data)
+        serializer = UserStatsSerializer(stats)
+        return Response(serializer.data)
 
 
-@extend_schema(
+    @extend_schema(
     summary="Start quiz session",
     description="Initiate a new quiz session and create progress tracking.",
     tags=["progress"],
-    responses={
+        responses={
         201: UserProgressSerializer,
         400: OpenApiResponse(description="Bad request"),
         404: OpenApiResponse(description="Quiz not found"),
-    },
-)
+        },
+    )
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def start_quiz_session(request):  # type: ignore[no-untyped-def]
@@ -263,18 +263,18 @@ def start_quiz_session(request):  # type: ignore[no-untyped-def]
 
     quiz_id = request.data.get("quiz_id")
     if not quiz_id:
-        return Response(
+            return Response(
             {"detail": "quiz_id is required."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-    try:
+        try:
         quiz = Quiz.objects.get(id=quiz_id)
     except Quiz.DoesNotExist:
-        return Response(
+            return Response(
             {"detail": "Quiz not found."},
-            status=status.HTTP_404_NOT_FOUND,
-        )
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
     # Get user (authenticated or anonymous)
     anonymous_user = None
@@ -302,23 +302,23 @@ def start_quiz_session(request):  # type: ignore[no-untyped-def]
     progress = UserProgress.objects.create(
         anonymous_user=anonymous_user,
         user=user,
-        quiz=quiz,
+            quiz=quiz,
         total_questions=quiz.questions.count(),
-    )
+                )
 
     serializer = UserProgressSerializer(progress)
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(
+    @extend_schema(
     summary="Submit quiz progress",
     description="Update progress after each answer.",
     tags=["progress"],
-    responses={
+        responses={
         200: UserProgressSerializer,
         404: OpenApiResponse(description="Progress not found"),
-    },
-)
+        },
+    )
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def submit_quiz_progress(request):  # type: ignore[no-untyped-def]
@@ -327,12 +327,12 @@ def submit_quiz_progress(request):  # type: ignore[no-untyped-def]
     answer_data = request.data.get("answer")
 
     if not progress_id:
-        return Response(
+            return Response(
             {"detail": "progress_id is required."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-    try:
+        try:
         progress = UserProgress.objects.get(id=progress_id)
     except UserProgress.DoesNotExist:
         return Response(
@@ -351,14 +351,14 @@ def submit_quiz_progress(request):  # type: ignore[no-untyped-def]
         progress.save()
 
     serializer = UserProgressSerializer(progress)
-    return Response(serializer.data)
+        return Response(serializer.data)
 
 
-@extend_schema(
+    @extend_schema(
     summary="Complete quiz session",
     description="Finalize quiz completion and update stats.",
     tags=["progress"],
-    responses={
+        responses={
         200: UserProgressSerializer,
         404: OpenApiResponse(description="Progress not found"),
     },
@@ -371,18 +371,18 @@ def complete_quiz_session(request):  # type: ignore[no-untyped-def]
     time_taken = request.data.get("time_taken_seconds")
 
     if not progress_id:
-        return Response(
+            return Response(
             {"detail": "progress_id is required."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-    try:
+        try:
         progress = UserProgress.objects.get(id=progress_id)
     except UserProgress.DoesNotExist:
-        return Response(
+            return Response(
             {"detail": "Progress not found."},
-            status=status.HTTP_404_NOT_FOUND,
-        )
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
     # Mark as completed
     progress.complete()

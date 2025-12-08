@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 
+const EMPTY_SUGGESTIONS: string[] = [];
+
 /**
  * Answer Input Component
  *
@@ -28,20 +30,21 @@ export default function AnswerInput({
   maxAttempts,
   disabled = false,
   placeholder = 'Type your answer...',
-  suggestions = [],
+  suggestions,
 }: AnswerInputProps) {
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const availableSuggestions = suggestions ?? EMPTY_SUGGESTIONS;
 
   const attemptsRemaining = maxAttempts - attemptsUsed;
 
   // Filter suggestions based on input
   useEffect(() => {
-    if (input.length >= 2 && suggestions.length > 0) {
-      const filtered = suggestions
+    if (input.length >= 2 && availableSuggestions.length > 0) {
+      const filtered = availableSuggestions
         .filter((s) => s.toLowerCase().includes(input.toLowerCase()))
         .slice(0, 5);
       setFilteredSuggestions(filtered);
@@ -51,7 +54,7 @@ export default function AnswerInput({
       setFilteredSuggestions([]);
     }
     setSelectedIndex(-1);
-  }, [input, suggestions]);
+  }, [input, availableSuggestions]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +142,7 @@ export default function AnswerInput({
             className={getInputClasses()}
             autoComplete="off"
             autoCorrect="off"
-            autoCapitalize="off"
+            autoCapitalize="none"
             spellCheck="false"
           />
 
@@ -200,4 +203,3 @@ export default function AnswerInput({
     </div>
   );
 }
-

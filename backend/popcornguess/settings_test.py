@@ -30,3 +30,5 @@ MIGRATION_MODULES = DisableMigrations()
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
+
+
