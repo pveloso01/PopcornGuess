@@ -1,5 +1,10 @@
 import Hero from '@/components/Hero';
 import FeatureCards from '@/components/FeatureCards';
+import StructuredData, { siteJsonLd, gameJsonLd } from '@/components/StructuredData';
+
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL ?? 'https://popcornguess.example'
+).replace(/\/$/, '');
 
 /**
  * Landing Page
@@ -13,6 +18,8 @@ import FeatureCards from '@/components/FeatureCards';
 export default function Home() {
   return (
     <main className="min-h-screen">
+      <StructuredData id="ld-site" data={siteJsonLd(SITE_URL)} />
+      <StructuredData id="ld-game" data={gameJsonLd(SITE_URL)} />
       {/* Hero Section - Immediate hook */}
       <Hero />
 
@@ -131,7 +138,7 @@ export default function Home() {
             The daily quiz resets at midnight UTC. Don&apos;t miss out!
           </p>
           <a
-            href="/quiz"
+            href="/quiz/daily"
             className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-amber text-[var(--background)] 
                        font-bold text-lg rounded-full hover-lift glow-amber transition-all duration-300
                        hover:shadow-[0_0_30px_rgba(255,140,0,0.5)]"
