@@ -12,7 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Category, DailyPuzzle, Question, Quiz
+from .models import Category, DailyPuzzle, Question, Quiz, Title
 from .serializers import (
     AnswerResultSerializer,
     AnswerSubmissionSerializer,
@@ -499,3 +499,73 @@ class QuizResultsView(APIView):
 {grid}
 
 Play at: https://popcornguess.com"""
+
+
+def _normalize_title_query(value: str) -> str:
+    """Lowercase + collapse whitespace. Used for prefix-match autocomplete."""
+    return " ".join(value.lower().strip().split())
+
+
+class TitleAutocompleteView(APIView):
+    """
+    GET /api/v1/quizzes/titles/?q=<query>&limit=<n>
+
+    Returns up to `limit` (default 8, max 20) movie/TV titles matching the
+    query as a prefix or alias. Public, anonymous-safe, throttled.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_scope = "autocomplete"
+
+    @extend_schema(
+        summary="Title autocomplete",
+        description=(
+            "Search the curated TMDb-derived title pool for autocomplete. "
+            "Used by the answer-input combobox so guesses always resolve to "
+            "a canonical title."
+        ),
+        tags=["titles"],
+        responses={200: OpenApiResponse(description="List of {id,title,year,kind}")},
+    )
+    def get(self, request):  # type: ignore[no-untyped-def]
+        query = _normalize_title_query(request.query_params.get("q", ""))
+        if len(query) < 2:
+            return Response({"results": []})
+
+        try:
+            limit = min(int(request.query_params.get("limit", 8)), 20)
+        except (TypeError, ValueError):
+            limit = 8
+
+        # Prefix match on normalized_title; fall back to substring for safety.
+        qs = (
+            Title.objects.filter(is_active=True)
+            .filter(normalized_title__startswith=query)
+            .order_by("-popularity", "canonical_title")[:limit]
+        )
+
+        if qs.count() < limit:
+            extra_needed = limit - qs.count()
+            substring_qs = (
+                Title.objects.filter(is_active=True)
+                .filter(normalized_title__contains=query)
+                .exclude(id__in=qs.values("id"))
+                .order_by("-popularity", "canonical_title")[:extra_needed]
+            )
+            results = list(qs) + list(substring_qs)
+        else:
+            results = list(qs)
+
+        return Response(
+            {
+                "results": [
+                    {
+                        "id": t.id,
+                        "title": t.canonical_title,
+                        "year": t.year,
+                        "kind": t.kind,
+                    }
+                    for t in results
+                ]
+            }
+        )

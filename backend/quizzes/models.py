@@ -189,6 +189,16 @@ class Quiz(models.Model):
         PRACTICE = "practice", _("Practice Mode")
         CHALLENGE = "challenge", _("Weekly Challenge")
 
+    class PuzzleMode(models.TextChoices):
+        """Distinct puzzle mechanic. The MVP ships only SYNOPSIS_LADDER."""
+
+        SYNOPSIS_LADDER = "synopsis_ladder", _("Synopsis Ladder")
+        CAST_LADDER = "cast_ladder", _("Cast Ladder")
+        QUOTE = "quote", _("Quote of the Day")
+        EMOJI_REBUS = "emoji_rebus", _("Emoji Rebus")
+        TRIO = "trio", _("Year-Genre-BoxOffice Trio")
+        DECADE_DIRECTOR = "decade_director", _("Decade and Director")
+
     title = models.CharField(_("title"), max_length=200)
     slug = models.SlugField(_("slug"), max_length=200, unique=True)
     description = models.TextField(_("description"), blank=True)
@@ -198,6 +208,16 @@ class Quiz(models.Model):
         max_length=20,
         choices=QuizType.choices,
         default=QuizType.DAILY,
+    )
+    mode = models.CharField(
+        _("puzzle mode"),
+        max_length=32,
+        choices=PuzzleMode.choices,
+        default=PuzzleMode.SYNOPSIS_LADDER,
+        help_text=_(
+            "Puzzle mechanic. Each mode reuses the same submit/results plumbing "
+            "with a different clue ladder shape."
+        ),
     )
     category = models.ForeignKey(
         Category,
@@ -255,6 +275,7 @@ class Quiz(models.Model):
         ordering = ["-publish_date", "-created_at"]
         indexes = [
             models.Index(fields=["quiz_type"]),
+            models.Index(fields=["mode"]),
             models.Index(fields=["publish_date"]),
             models.Index(fields=["is_published"]),
         ]
@@ -353,3 +374,63 @@ class DailyPuzzle(models.Model):
         if self.total_attempts == 0:
             return 0.0
         return (self.total_completions / self.total_attempts) * 100
+
+
+class Title(models.Model):
+    """
+    A movie or TV show title eligible to be a daily puzzle answer.
+
+    Populated from TMDb (CC-BY metadata). Powers the answer-autocomplete
+    combobox so guesses match a known canonical entry. Aliases live in a
+    JSON list to handle franchises and translations
+    (e.g. "The Lord of the Rings: The Fellowship of the Ring" -> "LOTR",
+    "Fellowship of the Ring").
+    """
+
+    class Kind(models.TextChoices):
+        MOVIE = "movie", _("Movie")
+        TV = "tv", _("TV Show")
+
+    tmdb_id = models.PositiveBigIntegerField(_("TMDb id"), unique=True)
+    kind = models.CharField(
+        _("kind"),
+        max_length=10,
+        choices=Kind.choices,
+        default=Kind.MOVIE,
+    )
+    canonical_title = models.CharField(_("canonical title"), max_length=255)
+    normalized_title = models.CharField(
+        _("normalized title"),
+        max_length=255,
+        db_index=True,
+        help_text=_("Lowercased, accent-stripped, used for autocomplete prefix match."),
+    )
+    year = models.PositiveSmallIntegerField(_("year"), null=True, blank=True)
+    aliases = models.JSONField(
+        _("aliases"),
+        default=list,
+        blank=True,
+        help_text=_("Alternate titles + abbreviations a player might type."),
+    )
+    popularity = models.FloatField(_("popularity"), default=0.0)
+    is_active = models.BooleanField(_("active"), default=True)
+
+    created_at = models.DateTimeField(_("created at"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("updated at"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("title")
+        verbose_name_plural = _("titles")
+        ordering = ["-popularity", "canonical_title"]
+        indexes = [
+            models.Index(fields=["normalized_title"]),
+            models.Index(fields=["popularity"]),
+            models.Index(fields=["kind"]),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.canonical_title} ({self.year})"
+            if self.year
+            else self.canonical_title
+        )

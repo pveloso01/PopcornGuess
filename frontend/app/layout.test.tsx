@@ -40,8 +40,10 @@ describe('RootLayout', () => {
   it('exposes branded metadata defaults', () => {
     expect(metadata.applicationName).toBe('PopcornGuess');
     expect(metadata.description).toMatch(/daily movie/i);
-    expect(metadata.openGraph?.type).toBe('website');
-    expect(metadata.twitter?.card).toBe('summary_large_image');
+    const og = metadata.openGraph as { type?: string } | null | undefined;
+    const tw = metadata.twitter as { card?: string } | null | undefined;
+    expect(og?.type).toBe('website');
+    expect(tw?.card).toBe('summary_large_image');
   });
 
   it('configures a sensible mobile viewport', () => {

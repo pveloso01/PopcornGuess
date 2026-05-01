@@ -221,7 +221,29 @@ export const api = {
         deviceId,
       });
     },
+
+    autocompleteTitles: async (
+      query: string,
+      limit: number = 8
+    ): Promise<TitleAutocompleteResponse> => {
+      const params = new URLSearchParams({ q: query, limit: String(limit) });
+      return apiRequest<TitleAutocompleteResponse>(
+        `/quizzes/titles/?${params.toString()}`,
+        { method: 'GET' }
+      );
+    },
   },
 };
+
+export interface TitleSuggestion {
+  id: number;
+  title: string;
+  year: number | null;
+  kind: 'movie' | 'tv';
+}
+
+export interface TitleAutocompleteResponse {
+  results: TitleSuggestion[];
+}
 
 export default api;

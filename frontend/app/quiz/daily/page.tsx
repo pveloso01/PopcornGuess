@@ -229,7 +229,8 @@ export default function DailyQuizPage() {
             attemptsUsed={attempts}
             maxAttempts={6}
             disabled={isSubmitting}
-            placeholder="Enter your answer..."
+            placeholder="Type a movie or TV show..."
+            useTitleAutocomplete
           />
         </div>
 

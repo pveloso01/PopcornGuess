@@ -200,6 +200,93 @@ export function getWhatsAppShareUrl(text: string): string {
 }
 
 /**
+ * Generate a Wordle-style ladder grid for the synopsis-ladder mode.
+ *
+ * The mode has one title to guess and a trail of up to `maxAttempts`
+ * guesses. Each cell encodes the result of one attempt:
+ *   - ⬛ wrong guess
+ *   - 🟨 right answer but used the maximum hints (≥ 4 rungs revealed)
+ *   - 🟩 right answer with at most 3 rungs revealed
+ *   - ▫ unused attempts (only included if `padToMax` is true)
+ *
+ * `attempts` is ordered earliest → latest. The first correct answer ends
+ * the puzzle, so `attempts` will contain at most one cell of green/yellow.
+ */
+export interface LadderAttempt {
+  isCorrect: boolean;
+  /** How many synopsis rungs the player saw before this attempt (1..maxRungs). */
+  rungsSeen: number;
+}
+
+export function generateLadderGrid(
+  attempts: LadderAttempt[],
+  options: { maxAttempts?: number; padToMax?: boolean } = {}
+): string {
+  const { maxAttempts = 6, padToMax = false } = options;
+  const cells: string[] = attempts.slice(0, maxAttempts).map((a) => {
+    if (!a.isCorrect) {
+      return '⬛';
+    }
+    return a.rungsSeen <= 3 ? '🟩' : '🟨';
+  });
+
+  if (padToMax) {
+    while (cells.length < maxAttempts) {
+      cells.push('▫');
+    }
+  }
+
+  return cells.join('');
+}
+
+export interface LadderShareInput {
+  date: string;
+  puzzleNumber?: number;
+  solved: boolean;
+  rungsRevealed: number;
+  maxAttempts?: number;
+  attempts: LadderAttempt[];
+  streak?: number;
+  siteUrl?: string;
+}
+
+/**
+ * Spoiler-free Wordle-style share text for synopsis-ladder.
+ * Never reveals the title or the rung text.
+ */
+export function generateLadderShareText(input: LadderShareInput): string {
+  const {
+    date,
+    puzzleNumber,
+    solved,
+    rungsRevealed,
+    maxAttempts = 6,
+    attempts,
+    streak,
+    siteUrl = 'https://popcornguess.com',
+  } = input;
+
+  const formatted = new Date(date).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  const headline = puzzleNumber
+    ? `🍿 PopcornGuess #${puzzleNumber}`
+    : `🍿 PopcornGuess ${formatted}`;
+  const score = solved ? `${rungsRevealed}/${maxAttempts}` : `X/${maxAttempts}`;
+  const grid = generateLadderGrid(attempts, { maxAttempts, padToMax: true });
+
+  let text = `${headline}\n${score}\n\n${grid}\n`;
+  if (streak && streak > 1) {
+    text += `\n🔥 ${streak}-day streak`;
+  }
+  text += `\n\n${siteUrl}`;
+  return text;
+}
+
+/**
  * Get achievement badge based on score
  */
 export function getScoreBadge(

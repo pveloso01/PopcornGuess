@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import TitleAutocomplete from './TitleAutocomplete';
 
 const EMPTY_SUGGESTIONS: string[] = [];
 
@@ -8,7 +9,8 @@ const EMPTY_SUGGESTIONS: string[] = [];
  * Answer Input Component
  *
  * Input field for quiz answers with:
- * - Autocomplete suggestions (optional)
+ * - Optional server-backed title autocomplete (set `useTitleAutocomplete`)
+ * - Local string-array suggestions (legacy)
  * - Visual feedback for correct/incorrect answers
  * - Attempt counter
  */
@@ -21,6 +23,11 @@ interface AnswerInputProps {
   disabled?: boolean;
   placeholder?: string;
   suggestions?: string[];
+  /**
+   * If true, the input is replaced by the server-backed title combobox.
+   * Use this for movie/TV-title answers.
+   */
+  useTitleAutocomplete?: boolean;
 }
 
 export default function AnswerInput({
@@ -31,6 +38,7 @@ export default function AnswerInput({
   disabled = false,
   placeholder = 'Type your answer...',
   suggestions,
+  useTitleAutocomplete = false,
 }: AnswerInputProps) {
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -105,10 +113,17 @@ export default function AnswerInput({
     return `${base} border-[var(--border)] focus:border-[var(--gold)] focus:shadow-[0_0_0_3px_rgba(212,175,55,0.2)]`;
   };
 
+  const submitCurrent = () => {
+    if (input.trim() && !disabled) {
+      onSubmit(input.trim());
+      setInput('');
+    }
+  };
+
   return (
     <div className="w-full max-w-md mx-auto">
       {/* Attempts remaining */}
-      <div className="flex justify-center gap-2 mb-4">
+      <div className="flex justify-center gap-2 mb-4" aria-hidden="true">
         {Array.from({ length: maxAttempts }).map((_, i) => (
           <div
             key={i}
@@ -126,7 +141,29 @@ export default function AnswerInput({
         remaining
       </p>
 
-      {/* Input form */}
+      {useTitleAutocomplete ? (
+        <div className="space-y-3">
+          <TitleAutocomplete
+            value={input}
+            onChange={setInput}
+            onSelect={(s) => setInput(s.title)}
+            onSubmit={submitCurrent}
+            disabled={disabled}
+            placeholder={placeholder}
+            label="Guess the movie or TV show"
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={submitCurrent}
+            disabled={disabled || !input.trim()}
+            className="w-full py-3 px-6 bg-gradient-amber text-[var(--background)] font-bold rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          >
+            Submit guess
+          </button>
+        </div>
+      ) : (
+      /* Input form */
       <form onSubmit={handleSubmit} className="relative">
         <div className="relative">
           <input
@@ -179,6 +216,7 @@ export default function AnswerInput({
           </ul>
         )}
       </form>
+      )}
 
       {/* Feedback message */}
       {isCorrect === true && (

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import StreakBadge from './StreakBadge';
 import { useStreak } from '@/hooks/useStreak';
+import { isFeatureEnabled } from '@/lib/featureFlags';
 
 /**
  * Navbar Component
@@ -14,17 +15,28 @@ import { useStreak } from '@/hooks/useStreak';
  * - Mobile hamburger menu for responsive design
  */
 
-const navLinks = [
+interface NavLink {
+  href: string;
+  label: string;
+  flag?: 'modes' | 'leaderboard' | 'profile';
+}
+
+const ALL_LINKS: NavLink[] = [
   { href: '/', label: 'Home' },
-  { href: '/quiz', label: 'Daily Quiz' },
-  { href: '/modes', label: 'Game Modes' },
-  { href: '/leaderboard', label: 'Leaderboard' },
-  { href: '/about', label: 'About' },
+  { href: '/quiz/daily', label: 'Daily Puzzle' },
+  { href: '/modes', label: 'Game Modes', flag: 'modes' },
+  { href: '/leaderboard', label: 'Leaderboard', flag: 'leaderboard' },
+  { href: '/help', label: 'How to play' },
 ];
+
+function getActiveLinks(): NavLink[] {
+  return ALL_LINKS.filter((link) => !link.flag || isFeatureEnabled(link.flag));
+}
 
 export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { currentStreak } = useStreak();
+  const activeLinks = getActiveLinks();
 
   return (
     <nav className="sticky top-0 z-50 bg-[var(--background)]/80 backdrop-blur-lg border-b border-[var(--border)]">
@@ -41,7 +53,7 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
+            {activeLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -100,7 +112,7 @@ export default function Navbar() {
         {isMobileMenuOpen && (
           <div className="md:hidden py-4 border-t border-[var(--border)] animate-fade-in">
             <div className="flex flex-col gap-1">
-              {navLinks.map((link) => (
+              {activeLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}

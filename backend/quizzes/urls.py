@@ -15,6 +15,7 @@ from .views import (
     QuizResultsView,
     QuizViewSet,
     SubmitAnswerView,
+    TitleAutocompleteView,
 )
 
 router = DefaultRouter()
@@ -29,4 +30,5 @@ urlpatterns = [
     path("submit/", SubmitAnswerView.as_view(), name="submit-answer"),
     path("hint/", GetHintView.as_view(), name="get-hint"),
     path("results/<int:quiz_id>/", QuizResultsView.as_view(), name="quiz-results"),
+    path("titles/", TitleAutocompleteView.as_view(), name="title-autocomplete"),
 ]
