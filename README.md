@@ -18,16 +18,21 @@ PopcornGuess is a web-based daily trivia game where players guess movies and TV 
 ### Using Docker (Recommended)
 
 ```bash
-# Copy environment variables
+# 1. Copy environment variables
 cp .env.example .env
 
-# Start all services
-docker compose up
+# 2. Start all services
+docker compose up -d --build
+
+# 3. Apply migrations and seed sample content
+docker compose exec backend python manage.py migrate
+docker compose exec backend python manage.py seed_quizzes
 ```
 
 **Services:**
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
+- API docs (Swagger): http://localhost:8000/api/schema/swagger-ui/
 - PostgreSQL: localhost:5433
 
 ### Manual Setup
@@ -42,12 +47,16 @@ See [Development Guide](./docs/DEVELOPMENT.md) for detailed setup instructions.
 
 ## 📚 Documentation
 
+- **[Production Roadmap](./docs/PRODUCTION_ROADMAP.md)** - Zero-cost path to launch
+- **[Deployment Guide](./docs/DEPLOYMENT.md)** - Free-tier provisioning checklist
+- **[Runbook](./docs/RUNBOOK.md)** - Operational procedures
+- **[Content Pipeline](./docs/CONTENT_PIPELINE.md)** - Daily puzzle generation
 - **[Development Guide](./docs/DEVELOPMENT.md)** - Setup and development workflows
-- **[Contributing](./docs/CONTRIBUTING.md)** - How to contribute to the project
+- **[Contributing](./docs/CONTRIBUTING.md)** - How to contribute
 - **[API Reference](./docs/API.md)** - REST API endpoints
 - **[User Model](./docs/USER_MODEL.md)** - Custom user model design
 - **[Docker Setup](./docs/DOCKER_SETUP.md)** - Docker environment details
-- **[Implementation Plan](./docs/IMPLEMENTATION_PLAN.md)** - Project roadmap
+- **[Implementation Plan (legacy)](./docs/IMPLEMENTATION_PLAN.md)** - Original feature roadmap
 
 ## 🤝 Contributing
 

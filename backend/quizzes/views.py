@@ -434,8 +434,8 @@ class QuizResultsView(APIView):
         today = timezone.now().date()
         daily_stats, _ = DailyQuizStats.objects.get_or_create(date=today, quiz=quiz)
 
-        # Get questions with answers
-        questions = quiz.questions.all().prefetch_related("quizzes")
+        # Get questions with answers (questions are already related to one quiz here)
+        questions = quiz.questions.all()
         questions_with_answers = []
         for question in questions:
             questions_with_answers.append(

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import StreakBadge from './StreakBadge';
+import { useStreak } from '@/hooks/useStreak';
 
 /**
  * Navbar Component
@@ -23,6 +24,7 @@ const navLinks = [
 
 export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { currentStreak } = useStreak();
 
   return (
     <nav className="sticky top-0 z-50 bg-[var(--background)]/80 backdrop-blur-lg border-b border-[var(--border)]">
@@ -53,7 +55,7 @@ export default function Navbar() {
 
           {/* Right side - Streak Badge */}
           <div className="flex items-center gap-4">
-            <StreakBadge streak={0} />
+            <StreakBadge streak={currentStreak} />
 
             {/* Mobile menu button */}
             <button

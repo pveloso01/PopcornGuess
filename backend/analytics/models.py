@@ -361,6 +361,12 @@ class Streak(models.Model):
         if self.streak_freezes_available > 0:
             self.streak_freezes_available -= 1
             self.streak_freeze_used_date = timezone.now().date()
+            self.save(
+                update_fields=[
+                    "streak_freezes_available",
+                    "streak_freeze_used_date",
+                ]
+            )
 
 
 class UserStats(models.Model):

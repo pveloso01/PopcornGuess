@@ -1,62 +1,51 @@
-import RootLayout from './layout';
+import RootLayout, { metadata, viewport } from './layout';
 
-// Mock next/font/google
 jest.mock('next/font/google', () => ({
-  Geist: () => ({
-    variable: '--font-geist-sans',
-    subsets: ['latin'],
-  }),
-  Geist_Mono: () => ({
-    variable: '--font-geist-mono',
-    subsets: ['latin'],
-  }),
+  Geist: () => ({ variable: '--font-geist-sans', subsets: ['latin'] }),
+  Geist_Mono: () => ({ variable: '--font-geist-mono', subsets: ['latin'] }),
 }));
 
-// Mock CSS imports
 jest.mock('./globals.css', () => ({}));
 
-describe('RootLayout', () => {
-  it('renders with the correct structure', () => {
-    const children = <div>Test Content</div>;
-    const result = RootLayout({ children });
+jest.mock('@/components/Navbar', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 
-    // Verify the component returns the expected structure
-    expect(result).toBeDefined();
+jest.mock('@/components/Footer', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('@/hooks/useStreak', () => ({
+  useStreak: () => ({ currentStreak: 0 }),
+}));
+
+describe('RootLayout', () => {
+  it('renders an html element with lang="en"', () => {
+    const result = RootLayout({ children: null });
     expect(result.type).toBe('html');
     expect(result.props.lang).toBe('en');
   });
 
-  it('applies correct font classes to body', () => {
-    const children = <div>Test Content</div>;
-    const result = RootLayout({ children });
-
-    // Check the body element
-    const bodyElement = result.props.children;
-    expect(bodyElement.type).toBe('body');
-    expect(bodyElement.props.className).toContain('--font-geist-sans');
-    expect(bodyElement.props.className).toContain('--font-geist-mono');
-    expect(bodyElement.props.className).toContain('antialiased');
+  it('applies the font variables and antialiased class to body', () => {
+    const result = RootLayout({ children: null });
+    const body = result.props.children;
+    expect(body.type).toBe('body');
+    expect(body.props.className).toContain('--font-geist-sans');
+    expect(body.props.className).toContain('--font-geist-mono');
+    expect(body.props.className).toContain('antialiased');
   });
 
-  it('renders children correctly', () => {
-    const testChild = <div data-testid="test">Child Content</div>;
-    const result = RootLayout({ children: testChild });
-
-    // Verify children are passed through
-    const bodyElement = result.props.children;
-    expect(bodyElement.props.children).toEqual(testChild);
+  it('exposes branded metadata defaults', () => {
+    expect(metadata.applicationName).toBe('PopcornGuess');
+    expect(metadata.description).toMatch(/daily movie/i);
+    expect(metadata.openGraph?.type).toBe('website');
+    expect(metadata.twitter?.card).toBe('summary_large_image');
   });
 
-  it('renders multiple children correctly', () => {
-    const children = (
-      <>
-        <div>First Child</div>
-        <div>Second Child</div>
-      </>
-    );
-    const result = RootLayout({ children });
-
-    const bodyElement = result.props.children;
-    expect(bodyElement.props.children).toEqual(children);
+  it('configures a sensible mobile viewport', () => {
+    expect(viewport.width).toBe('device-width');
+    expect(viewport.initialScale).toBe(1);
   });
 });

@@ -2,70 +2,35 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import Home from './page';
 
-// Mock Next.js Image component
-jest.mock('next/image', () => ({
-  __esModule: true,
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement> & { priority?: boolean }) => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { priority, ...rest } = props;
-    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-    return <img {...rest} />;
-  },
+// Mock Next.js navigation hooks used by sub-components.
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
-describe('Home Page', () => {
-  it('renders the page heading', () => {
+describe('Home page', () => {
+  it('renders the How to Play heading', () => {
     render(<Home />);
-
-    const heading = screen.getByRole('heading', {
-      name: /to get started, edit the page\.tsx file/i,
-    });
-
-    expect(heading).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /how to play/i })).toBeInTheDocument();
   });
 
-  it('renders the Next.js logo', () => {
+  it('explains the daily-quiz cadence in the CTA section', () => {
     render(<Home />);
-
-    const logo = screen.getByAltText('Next.js logo');
-
-    expect(logo).toBeInTheDocument();
-    expect(logo).toHaveAttribute('src', '/next.svg');
+    expect(screen.getByText(/daily quiz resets at midnight utc/i)).toBeInTheDocument();
   });
 
-  it('renders the Templates link', () => {
+  it('exposes a primary action linking into the quiz flow', () => {
     render(<Home />);
-
-    const templatesLink = screen.getByRole('link', { name: /templates/i });
-
-    expect(templatesLink).toBeInTheDocument();
-    expect(templatesLink).toHaveAttribute('href', expect.stringContaining('vercel.com/templates'));
+    const cta = screen.getByRole('link', { name: /start playing now/i });
+    expect(cta).toBeInTheDocument();
+    expect(cta).toHaveAttribute('href', expect.stringMatching(/^\/quiz/));
   });
 
-  it('renders the Learning center link', () => {
+  it('shows the three-step onboarding (start, guess, share)', () => {
     render(<Home />);
-
-    const learningLink = screen.getByRole('link', { name: /learning/i });
-
-    expect(learningLink).toBeInTheDocument();
-    expect(learningLink).toHaveAttribute('href', expect.stringContaining('nextjs.org/learn'));
-  });
-
-  it('renders the Deploy Now button', () => {
-    render(<Home />);
-
-    const deployButton = screen.getByRole('link', { name: /deploy now/i });
-
-    expect(deployButton).toBeInTheDocument();
-    expect(deployButton).toHaveAttribute('href', expect.stringContaining('vercel.com/new'));
-  });
-
-  it('renders the Documentation link', () => {
-    render(<Home />);
-
-    const docsLink = screen.getByRole('link', { name: /documentation/i });
-
-    expect(docsLink).toBeInTheDocument();
-    expect(docsLink).toHaveAttribute('href', expect.stringContaining('nextjs.org/docs'));
+    expect(screen.getByRole('heading', { name: /start the quiz/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /guess the answer/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /share & compete/i })).toBeInTheDocument();
   });
 });
