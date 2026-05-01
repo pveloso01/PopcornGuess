@@ -28,12 +28,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv(
-    "SECRET_KEY", "django-insecure-!#t2ai5_5knicqe#$$c1r6*k+(5w#x@!*+)@$8on=kk@3x#8$d"
-)
-
-# SECURITY WARNING: don't run with debug turned on in production!
+# In production we fail fast if SECRET_KEY is missing — silently using the
+# insecure dev fallback in prod was a known footgun on prior projects.
 DEBUG = os.getenv("DEBUG", "True") == "True"
+_DEV_SECRET = (
+    "django-insecure-!#t2ai5_5knicqe#$$c1r6*k+(5w#x@!*+)@$8on=kk@3x#8$d"
+)
+SECRET_KEY = os.getenv("SECRET_KEY", _DEV_SECRET if DEBUG else "")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable must be set when DEBUG=False. "
+        "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(64))'"
+    )
 
 ALLOWED_HOSTS = (
     os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else []
@@ -71,6 +77,9 @@ SITE_ID = 1
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise must run right after SecurityMiddleware so it can serve
+    # static files in production without an external CDN. Free-tier-friendly.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -164,6 +173,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -195,6 +206,21 @@ REST_FRAMEWORK = {
     ],
     # OpenAPI 3 schema generation
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Throttling — protect free-tier infra and discourage abuse.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": os.getenv("THROTTLE_ANON", "60/min"),
+        "user": os.getenv("THROTTLE_USER", "240/min"),
+        "autocomplete": os.getenv("THROTTLE_AUTOCOMPLETE", "30/min"),
+        "submit": os.getenv("THROTTLE_SUBMIT", "30/min"),
+        "login": os.getenv("THROTTLE_LOGIN", "10/min"),
+        # dj-rest-auth declares this scope on its login/logout views.
+        "dj_rest_auth": os.getenv("THROTTLE_DJ_REST_AUTH", "20/min"),
+    },
 }
 
 # Only enable browsable API in DEBUG mode
@@ -460,9 +486,34 @@ SOCIALACCOUNT_PROVIDERS = {
 # https://dj-rest-auth.readthedocs.io/en/latest/configuration.html
 REST_AUTH = {
     "USE_JWT": True,
-    "JWT_AUTH_HTTPONLY": False,  # Allow frontend to access token
-    "JWT_AUTH_COOKIE": "auth-token",
-    "JWT_AUTH_REFRESH_COOKIE": "refresh-token",
+    # httpOnly cookies prevent XSS-driven token theft. The frontend never
+    # touches the token directly; the cookie is sent automatically with
+    # `credentials: 'include'`.
+    "JWT_AUTH_HTTPONLY": True,
+    "JWT_AUTH_SECURE": not DEBUG,
+    "JWT_AUTH_SAMESITE": "Lax",
+    "JWT_AUTH_COOKIE": "pg-access",
+    "JWT_AUTH_REFRESH_COOKIE": "pg-refresh",
+    "SESSION_LOGIN": False,
     "USER_DETAILS_SERIALIZER": "users.serializers.UserSerializer",
     "REGISTER_SERIALIZER": "users.serializers.UserCreateSerializer",
 }
+
+# Sentry observability — gated by env so deploys without a DSN no-op.
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if SENTRY_DSN and not DEBUG:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration()],
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+            send_default_pii=False,
+            environment=os.getenv("DEPLOY_ENV", "production"),
+            release=os.getenv("RELEASE_SHA", ""),
+        )
+    except ImportError:
+        # sentry-sdk is optional; skip gracefully.
+        pass

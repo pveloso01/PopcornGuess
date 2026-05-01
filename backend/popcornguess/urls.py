@@ -24,13 +24,23 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from .health import healthcheck
+
 urlpatterns = [
+    # Health
+    path("health/", healthcheck, name="health"),
     # Admin
     path("admin/", admin.site.urls),
     # API v1
     path("api/v1/", include("users.urls")),
     path("api/v1/", include("quizzes.urls")),
     path("api/v1/", include("analytics.urls")),
+    # Auth (dj-rest-auth + dj-rest-auth.registration)
+    path("api/v1/auth/", include("dj_rest_auth.urls")),
+    path(
+        "api/v1/auth/registration/",
+        include("dj_rest_auth.registration.urls"),
+    ),
     # Social authentication (allauth)
     path("accounts/", include("allauth.urls")),
     # OpenAPI Schema & Documentation
