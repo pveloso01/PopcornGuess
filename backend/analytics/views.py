@@ -2,12 +2,13 @@
 API views for analytics and user tracking.
 """
 
+from django.db import transaction
 from django.utils import timezone
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import AnonymousUser, Streak, UserProgress, UserStats
@@ -386,3 +387,86 @@ def complete_quiz_session(request):  # type: ignore[no-untyped-def]
 
     serializer = UserProgressSerializer(progress)
     return Response(serializer.data)
+
+
+@extend_schema(
+    summary="Migrate anonymous progress to authenticated account",
+    description=(
+        "Atomically transfer Streak, UserStats, and UserProgress from an "
+        "anonymous device-id-keyed user to the currently authenticated user. "
+        "Idempotent: calling twice with the same device_id is a no-op once "
+        "ownership has transferred. Conflicts (user already has a streak) "
+        "merge by keeping the higher streak/best-streak/total counts."
+    ),
+    tags=["anonymous"],
+    responses={
+        200: OpenApiResponse(description="Migration complete"),
+        400: OpenApiResponse(description="device_id missing or invalid"),
+        404: OpenApiResponse(description="Anonymous user not found"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def migrate_anonymous_to_user(request):  # type: ignore[no-untyped-def]
+    """Promote anonymous progress to the current logged-in user."""
+    device_id = request.data.get("device_id")
+    if not device_id:
+        return Response(
+            {"detail": "device_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        anon = AnonymousUser.objects.get(device_id=device_id)
+    except AnonymousUser.DoesNotExist:
+        return Response(
+            {"detail": "Anonymous user not found for that device_id."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    user = request.user
+
+    with transaction.atomic():
+        UserProgress.objects.filter(anonymous_user=anon).update(
+            user=user, anonymous_user=None
+        )
+
+        anon_streak = Streak.objects.filter(anonymous_user=anon).first()
+        if anon_streak is not None:
+            user_streak, _ = Streak.objects.get_or_create(user=user)
+            user_streak.current_streak = max(
+                user_streak.current_streak, anon_streak.current_streak
+            )
+            user_streak.best_streak = max(
+                user_streak.best_streak, anon_streak.best_streak
+            )
+            user_streak.streak_freezes_available = max(
+                user_streak.streak_freezes_available,
+                anon_streak.streak_freezes_available,
+            )
+            user_streak.streak_freezes_earned += anon_streak.streak_freezes_earned
+            user_streak.save()
+            anon_streak.delete()
+
+        anon_stats = UserStats.objects.filter(anonymous_user=anon).first()
+        if anon_stats is not None:
+            user_stats, _ = UserStats.objects.get_or_create(user=user)
+            for field in (
+                "total_quizzes_played",
+                "total_quizzes_completed",
+                "total_correct_answers",
+                "total_incorrect_answers",
+            ):
+                if hasattr(user_stats, field) and hasattr(anon_stats, field):
+                    setattr(
+                        user_stats,
+                        field,
+                        getattr(user_stats, field) + getattr(anon_stats, field),
+                    )
+            user_stats.save()
+            anon_stats.delete()
+
+        # Anonymous shell has nothing left to track; remove it.
+        anon.delete()
+
+    return Response({"status": "migrated"})

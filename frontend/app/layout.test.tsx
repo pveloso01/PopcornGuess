@@ -21,6 +21,19 @@ jest.mock('@/hooks/useStreak', () => ({
   useStreak: () => ({ currentStreak: 0 }),
 }));
 
+jest.mock('@/contexts/AuthContext', () => ({
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+  useAuth: () => ({
+    user: null,
+    isLoading: false,
+    isAuthenticated: false,
+    login: jest.fn(),
+    logout: jest.fn(),
+    register: jest.fn(),
+    refresh: jest.fn(),
+  }),
+}));
+
 describe('RootLayout', () => {
   it('renders an html element with lang="en"', () => {
     const result = RootLayout({ children: null });

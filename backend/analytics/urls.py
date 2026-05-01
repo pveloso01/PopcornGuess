@@ -20,6 +20,11 @@ urlpatterns = [
         views.sync_anonymous_data,
         name="anonymous-sync",
     ),
+    path(
+        "anonymous/migrate/",
+        views.migrate_anonymous_to_user,
+        name="anonymous-migrate",
+    ),
     # Streak endpoints
     path(
         "streaks/current/",
