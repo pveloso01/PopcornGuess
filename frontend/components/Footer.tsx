@@ -43,21 +43,13 @@ const socialLinks = [
 
 const footerLinks = {
   Play: [
-    { label: 'Daily Quiz', href: '/quiz' },
-    { label: 'Practice Mode', href: '/practice' },
-    { label: 'Blitz Mode', href: '/blitz' },
-    { label: 'Leaderboard', href: '/leaderboard' },
-  ],
-  About: [
-    { label: 'How to Play', href: '/how-to-play' },
-    { label: 'FAQ', href: '/faq' },
-    { label: 'About Us', href: '/about' },
-    { label: 'Contact', href: '/contact' },
+    { label: "Today's puzzle", href: '/quiz/daily' },
+    { label: 'How to play', href: '/help' },
   ],
   Legal: [
-    { label: 'Privacy Policy', href: '/privacy' },
-    { label: 'Terms of Service', href: '/terms' },
-    { label: 'Cookie Policy', href: '/cookies' },
+    { label: 'Privacy', href: '/privacy' },
+    { label: 'Terms', href: '/terms' },
+    { label: 'DMCA / copyright', href: '/legal/dmca' },
   ],
 };
 
@@ -71,7 +63,7 @@ export default function Footer() {
             🍿 New quiz drops at midnight UTC every day!
           </p>
           <Link
-            href="/quiz"
+            href="/quiz/daily"
             className="inline-flex items-center gap-2 px-6 py-2 bg-[var(--amber)] text-[var(--background)] 
                        font-semibold rounded-full hover:bg-[var(--amber-light)] transition-colors"
           >
