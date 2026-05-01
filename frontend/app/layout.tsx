@@ -4,6 +4,7 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { AuthProvider } from '@/contexts/AuthContext';
+import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -41,8 +42,11 @@ export const metadata: Metadata = {
   authors: [{ name: 'PopcornGuess' }],
   manifest: '/manifest.webmanifest',
   icons: {
-    icon: '/favicon.ico',
-    apple: '/icons/icon-192.png',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/icons/icon.svg',
   },
   openGraph: {
     type: 'website',
@@ -90,6 +94,7 @@ export default function RootLayout({
           <Navbar />
           <div className="min-h-[calc(100vh-4rem)]">{children}</div>
           <Footer />
+          <ServiceWorkerRegister />
         </AuthProvider>
       </body>
     </html>
