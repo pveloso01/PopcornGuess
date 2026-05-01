@@ -1,0 +1,67 @@
+name: Generate daily puzzle
+
+on:
+  schedule:
+    # 00:30 UTC every day — well before our 00:00 UTC daily rollover, so
+    # the puzzle is in place by the time the rollover triggers on the
+    # client side.
+    - cron: '30 0 * * *'
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Override target date (YYYY-MM-DD). Empty = tomorrow.'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry-run only — generate but do not write.'
+        type: boolean
+        default: false
+
+jobs:
+  generate:
+    name: Run generate_daily_puzzle on Fly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Build flyctl args
+        id: args
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.target_date }}" ]; then
+            ARGS="$ARGS --date ${{ github.event.inputs.target_date }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          echo "flyargs=$ARGS" >> $GITHUB_OUTPUT
+      - name: Run generator
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -e
+          flyctl ssh console -a "${{ vars.FLY_APP_NAME }}" \
+            -C "python manage.py generate_daily_puzzle ${{ steps.args.outputs.flyargs }}"
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const target = '${{ github.event.inputs.target_date }}' || 'tomorrow';
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Daily puzzle generation failed (${target})`,
+              labels: ['puzzle-error', 'urgent'],
+              body: [
+                'The scheduled puzzle generator failed.',
+                '',
+                `Target date: \`${target}\``,
+                `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '',
+                'Recovery options:',
+                '1. Re-run the workflow manually (Actions → Generate daily puzzle → Run workflow).',
+                '2. SSH into Fly and run `python manage.py generate_daily_puzzle --tmdb-id <id>` with a hand-picked title.',
+                '3. Check Gemini and TMDb quota.',
+              ].join('\n'),
+            });

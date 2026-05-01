@@ -1,0 +1,44 @@
+name: Deploy backend (Fly.io)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Fly deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Set release SHA
+        run: echo "RELEASE_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - name: Deploy
+        run: |
+          flyctl deploy \
+            --remote-only \
+            --build-arg INSTALL_DEV=0 \
+            --image-label "$RELEASE_SHA"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Smoke check
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -sSf "https://${{ vars.FLY_APP_HOST }}/health/" >/dev/null; then
+              echo "Health OK"; exit 0
+            fi
+            echo "Waiting for app to come up… ($i/5)"
+            sleep 10
+          done
+          echo "Health check failed after deploy"; exit 1
