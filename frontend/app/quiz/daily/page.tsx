@@ -213,7 +213,7 @@ export default function DailyQuizPage() {
             old amber progress bar + numeric scoreboard. */}
         <div className="mb-8">
           <QuizProgressTrail
-            totalQuestions={total}
+            questions={session.questions.map((q) => ({ id: q.id }))}
             answers={session.answers.map((a) => ({
               questionId: a.questionId,
               isCorrect: a.isCorrect,
