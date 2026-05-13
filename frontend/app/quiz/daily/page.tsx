@@ -247,15 +247,6 @@ export default function DailyQuizPage() {
           </div>
         )}
 
-        {/* Submit Button */}
-        <button
-          onClick={handleSubmitAnswer}
-          disabled={!currentAnswer.trim() || isSubmitting}
-          className="w-full py-4 px-6 bg-gradient-amber text-[var(--background)] font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isSubmitting ? 'Submitting...' : 'Submit Answer'}
-        </button>
-
         {/* Score */}
         <div className="mt-8 text-center">
           <p className="text-[var(--text-secondary)]">
