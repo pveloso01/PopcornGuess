@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import QuizQuestion from '@/components/QuizQuestion';
 import AnswerInput from '@/components/AnswerInput';
+import QuizProgressTrail from '@/components/QuizProgressTrail';
 import { useAnonymousUser } from '@/hooks/useAnonymousUser';
 import { useQuizSession } from '@/hooks/useQuizSession';
 import api from '@/lib/api';
@@ -207,14 +208,18 @@ export default function DailyQuizPage() {
           </div>
         </div>
 
-        {/* Progress Bar */}
+        {/* Progress trail — one marker per question, green for correct,
+            red for incorrect, gold ring on the active one. Replaces the
+            old amber progress bar + numeric scoreboard. */}
         <div className="mb-8">
-          <div className="h-2 bg-[var(--background-secondary)] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-amber transition-all duration-300"
-              style={{ width: `${(progress / total) * 100}%` }}
-            />
-          </div>
+          <QuizProgressTrail
+            totalQuestions={total}
+            answers={session.answers.map((a) => ({
+              questionId: a.questionId,
+              isCorrect: a.isCorrect,
+            }))}
+            currentQuestionIndex={session.currentQuestionIndex}
+          />
         </div>
 
         {/* Current Question */}
@@ -262,23 +267,13 @@ export default function DailyQuizPage() {
           </div>
         )}
 
-        {/* Score — solved-so-far over total. The previous label
-            ("Current Score: X / N-1") confused playtesters because the
-            denominator advanced every question; this phrasing makes the
-            ratio's meaning unambiguous. */}
-        <div className="mt-8 text-center">
-          <p className="text-[var(--text-secondary)]">
-            Solved{' '}
-            <span className="text-[var(--text-primary)] font-bold">
-              {session.score}
-            </span>{' '}
-            of{' '}
-            <span className="text-[var(--text-primary)] font-bold">
-              {total}
-            </span>{' '}
-            so far
-          </p>
-        </div>
+        {/* No live score during play — genre convention. Every Wordle
+            clone (Wordle, LoLdle, Pokedle, Framed, Moviedle, etc.)
+            uses the attempt-slot count itself as the progress indicator
+            and saves the score reveal for the end-of-game stats modal.
+            Mid-game numeric scoreboards feel mobile-freemium, not
+            "elegant daily ritual." Stats and share grid live on
+            /quiz/results when the quiz completes. */}
       </div>
     </div>
   );
