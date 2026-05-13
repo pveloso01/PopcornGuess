@@ -711,14 +711,57 @@ class TestQuizResultsWithProgress:
         # Grid embeds at least one correct-marker glyph.
         assert "🟩" in response.data["shareable_text"]
 
-    def test_results_with_unknown_progress_id_ignores_it(
-        self, make_quiz
+    def test_results_with_unknown_progress_id_falls_back_to_recent(
+        self, make_anon, make_quiz
     ) -> None:
-        """An unknown progress_id is silently ignored — score falls back to 0."""
-        quiz = make_quiz(questions=1)
-        response = APIClient().get(
-            f"/api/v1/quizzes/results/{quiz.id}/?progress_id=99999999"
+        """
+        Unknown progress_id triggers the device-id fallback: pick the
+        most recent UserProgress for this quiz+device. Without this,
+        a player who lost their progress_id (refresh, deep link) used
+        to see 0/N even after a perfect run.
+        """
+        from analytics.models import UserProgress
+
+        anon = make_anon()
+        quiz = make_quiz(questions=2)
+        UserProgress.objects.create(
+            anonymous_user=anon,
+            quiz=quiz,
+            total_questions=2,
+            score=2,
         )
+        response = APIClient().get(
+            f"/api/v1/quizzes/results/{quiz.id}/?progress_id=99999999",
+            HTTP_X_DEVICE_ID=str(anon.device_id),
+        )
+        assert response.status_code == 200
+        assert response.data["score"] == 2
+
+    def test_results_without_progress_id_uses_device_fallback(
+        self, make_anon, make_quiz
+    ) -> None:
+        """No progress_id at all — fallback finds the latest run by device."""
+        from analytics.models import UserProgress
+
+        anon = make_anon()
+        quiz = make_quiz(questions=3)
+        UserProgress.objects.create(
+            anonymous_user=anon,
+            quiz=quiz,
+            total_questions=3,
+            score=3,
+        )
+        response = APIClient().get(
+            f"/api/v1/quizzes/results/{quiz.id}/",
+            HTTP_X_DEVICE_ID=str(anon.device_id),
+        )
+        assert response.status_code == 200
+        assert response.data["score"] == 3
+
+    def test_results_without_device_id_returns_zero(self, make_quiz) -> None:
+        """No progress_id AND no device-id means we can't identify anyone."""
+        quiz = make_quiz(questions=1)
+        response = APIClient().get(f"/api/v1/quizzes/results/{quiz.id}/")
         assert response.status_code == 200
         assert response.data["score"] == 0
 

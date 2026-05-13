@@ -177,57 +177,60 @@ export function useQuizSession(): UseQuizSessionReturn {
    * Move to next question
    */
   const nextQuestion = useCallback(() => {
-    if (!session) return;
-
-    setSession({
-      ...session,
-      currentQuestionIndex: session.currentQuestionIndex + 1,
+    // Functional update — the closure-captured `session` could be a
+    // pre-submit snapshot when this fires from a setTimeout (the daily
+    // page calls nextQuestion 2.2s after a correct answer). Spreading
+    // that stale session was wiping the just-added answer and turning
+    // the progress trail's green marker back to red.
+    setSession((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        currentQuestionIndex: prev.currentQuestionIndex + 1,
+      };
     });
-  }, [session]);
+  }, []);
 
   /**
    * Complete the quiz session
    */
   const completeSession = useCallback(
     async (deviceId?: string) => {
-      if (!session) return;
+      // Read the latest session through the ref so we don't capture a
+      // pre-submit snapshot when this is invoked from a setTimeout.
+      // Same closure trap that wiped answers in nextQuestion.
+      const current = sessionRef.current;
+      if (!current) return;
 
       try {
         setIsLoading(true);
         setError(null);
 
-        const timeTaken = Math.floor((Date.now() - session.startTime) / 1000);
+        const timeTaken = Math.floor((Date.now() - current.startTime) / 1000);
 
-        // Call backend to finalize
-        await api.progress.complete(session.progressId, timeTaken, deviceId);
+        await api.progress.complete(current.progressId, timeTaken, deviceId);
 
-        // Update local session
-        const completedSession = {
-          ...session,
-          isCompleted: true,
-        };
+        setSession((prev) => (prev ? { ...prev, isCompleted: true } : prev));
 
-        setSession(completedSession);
-
-        // Update localStorage
         saveQuizProgress({
-          quizId: session.quizId.toString(),
-          score: session.score,
-          totalQuestions: session.questions.length,
-          answers: session.answers,
+          quizId: current.quizId.toString(),
+          score: current.score,
+          totalQuestions: current.questions.length,
+          answers: current.answers,
           isCompleted: true,
-          startedAt: session.startTime,
+          startedAt: current.startTime,
           completedAt: Date.now(),
         });
       } catch (err) {
-        const error = err instanceof Error ? err : new Error('Failed to complete session');
+        const error =
+          err instanceof Error ? err : new Error('Failed to complete session');
         setError(error);
         console.error('Failed to complete quiz session:', error);
       } finally {
         setIsLoading(false);
       }
     },
-    [session]
+    []
   );
 
   /**

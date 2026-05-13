@@ -58,7 +58,13 @@ function QuizResultsContent() {
 
       try {
         setIsLoading(true);
-        const data = (await api.quizzes.getResults(parseInt(quizId), deviceId)) as QuizResultsData;
+        // Forward progress_id so the backend can find the exact
+        // UserProgress row. Without it, the API falls back to 0 score.
+        const data = (await api.quizzes.getResults(
+          parseInt(quizId),
+          deviceId,
+          progressId ? parseInt(progressId) : undefined
+        )) as QuizResultsData;
         setResults(data);
       } catch (error) {
         console.error('Failed to load results:', error);

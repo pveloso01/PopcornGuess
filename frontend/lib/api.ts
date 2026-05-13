@@ -264,8 +264,13 @@ export const api = {
       });
     },
 
-    getResults: async (quizId: number, deviceId?: string) => {
-      return apiRequest(`/quizzes/results/${quizId}/`, {
+    getResults: async (
+      quizId: number,
+      deviceId?: string,
+      progressId?: number
+    ) => {
+      const qs = progressId !== undefined ? `?progress_id=${progressId}` : '';
+      return apiRequest(`/quizzes/results/${quizId}/${qs}`, {
         method: 'GET',
         deviceId,
       });

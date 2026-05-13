@@ -427,15 +427,33 @@ class QuizResultsView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Get user progress
+        # Get user progress. The caller normally sends progress_id from
+        # the just-completed session. If they didn't (page refresh, deep
+        # link, missing query string), fall back to the most recent
+        # progress row owned by this caller for this quiz so the score
+        # still surfaces — otherwise the page silently shows 0/N.
         progress_id = request.query_params.get("progress_id")
-
         user_progress = None
         if progress_id:
             try:
                 user_progress = UserProgress.objects.get(id=progress_id)
-            except UserProgress.DoesNotExist:
+            except (UserProgress.DoesNotExist, ValueError):
                 pass
+
+        if user_progress is None:
+            device_id = request.headers.get("X-Device-ID")
+            base = UserProgress.objects.filter(quiz=quiz)
+            if request.user.is_authenticated:
+                base = base.filter(user=request.user)
+            elif device_id:
+                base = base.filter(
+                    anonymous_user__device_id=device_id
+                )
+            else:
+                base = base.none()
+            user_progress = (
+                base.order_by("-completed_at", "-started_at").first()
+            )
 
         # Get community stats
         today = timezone.now().date()

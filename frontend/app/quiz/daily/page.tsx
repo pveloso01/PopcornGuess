@@ -133,15 +133,22 @@ export default function DailyQuizPage() {
         // Pause long enough for the green dot + 'Correct!' banner to
         // register visually before the next question replaces them.
         // 1.5s read like a flash to playtesters; 2.2s lands cleanly.
-        setTimeout(() => {
+        setTimeout(async () => {
           if (session.currentQuestionIndex < session.questions.length - 1) {
             nextQuestion();
             setAttempts(0);
             setFeedback(null);
           } else {
             // Quiz complete
-            completeSession(deviceId);
-            router.push(`/quiz/results?quiz=${session.quizId}`);
+            // Await completion so DailyQuizStats / is_completed are
+            // committed before the results page queries. The query string
+            // includes progress_id so QuizResultsView can find the right
+            // UserProgress row and return the actual score (without it,
+            // the backend falls back to 0).
+            await completeSession(deviceId);
+            router.push(
+              `/quiz/results?quiz=${session.quizId}&progress=${session.progressId}`
+            );
           }
         }, 2200);
       } else {
@@ -154,14 +161,16 @@ export default function DailyQuizPage() {
 
         if (result.attempts_remaining === 0) {
           // No more attempts, move to next
-          setTimeout(() => {
+          setTimeout(async () => {
             if (session.currentQuestionIndex < session.questions.length - 1) {
               nextQuestion();
               setAttempts(0);
               setFeedback(null);
             } else {
-              completeSession(deviceId);
-              router.push(`/quiz/results?quiz=${session.quizId}`);
+              await completeSession(deviceId);
+              router.push(
+                `/quiz/results?quiz=${session.quizId}&progress=${session.progressId}`
+              );
             }
           }, 2000);
         }
