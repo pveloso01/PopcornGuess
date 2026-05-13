@@ -207,19 +207,26 @@ REST_FRAMEWORK = {
     # OpenAPI 3 schema generation
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Throttling — protect free-tier infra and discourage abuse.
+    # Rates are deliberately loose in DEBUG so dev hot-reload + retry
+    # loops don't burn the quota every minute. Production values are
+    # set via env vars on Fly.io.
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": os.getenv("THROTTLE_ANON", "60/min"),
-        "user": os.getenv("THROTTLE_USER", "240/min"),
-        "autocomplete": os.getenv("THROTTLE_AUTOCOMPLETE", "30/min"),
-        "submit": os.getenv("THROTTLE_SUBMIT", "30/min"),
-        "login": os.getenv("THROTTLE_LOGIN", "10/min"),
+        "anon": os.getenv("THROTTLE_ANON", "10000/min" if DEBUG else "60/min"),
+        "user": os.getenv("THROTTLE_USER", "10000/min" if DEBUG else "240/min"),
+        "autocomplete": os.getenv(
+            "THROTTLE_AUTOCOMPLETE", "10000/min" if DEBUG else "30/min"
+        ),
+        "submit": os.getenv("THROTTLE_SUBMIT", "10000/min" if DEBUG else "30/min"),
+        "login": os.getenv("THROTTLE_LOGIN", "10000/min" if DEBUG else "10/min"),
         # dj-rest-auth declares this scope on its login/logout views.
-        "dj_rest_auth": os.getenv("THROTTLE_DJ_REST_AUTH", "20/min"),
+        "dj_rest_auth": os.getenv(
+            "THROTTLE_DJ_REST_AUTH", "10000/min" if DEBUG else "20/min"
+        ),
     },
 }
 
