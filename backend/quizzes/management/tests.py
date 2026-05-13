@@ -529,3 +529,114 @@ class TestAdminPuzzleSeedView:
         title = Title.objects.get(canonical_title="Override Movie")
         assert "Override Movie (2024)" in title.aliases
         assert title.year == 2024
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# resolve_unclassified_target_kind — TMDb-backed final fallback
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestResolveUnclassifiedTargetKind:
+    def _make_any_question(self, *, answer: str) -> Question:
+        return Question.objects.create(
+            text=f"What is {answer}?",
+            correct_answer=answer,
+            target_kind=Question.AnswerKind.ANY,
+        )
+
+    def test_noop_when_tmdb_key_missing(self, monkeypatch) -> None:
+        monkeypatch.delenv("TMDB_API_KEY", raising=False)
+        self._make_any_question(answer="Mystery Show")
+        out = StringIO()
+        call_command("resolve_unclassified_target_kind", stdout=out)
+        assert "TMDB_API_KEY is not set" in out.getvalue()
+        # Question stays at 'any'.
+        assert Question.objects.filter(
+            target_kind=Question.AnswerKind.ANY
+        ).count() == 1
+
+    def test_resolves_to_movie_via_tmdb(self, monkeypatch) -> None:
+        monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+        q = self._make_any_question(answer="Some Movie")
+
+        fake_record = TitleRecord(
+            tmdb_id=42,
+            kind="movie",
+            title="Some Movie",
+            year=2024,
+            overview="",
+            popularity=10.0,
+            aliases=(),
+        )
+
+        with patch(
+            "quizzes.management.commands.resolve_unclassified_target_kind.search_titles",
+            return_value=[fake_record],
+        ):
+            call_command("resolve_unclassified_target_kind")
+
+        q.refresh_from_db()
+        assert q.target_kind == Question.AnswerKind.MOVIE
+        # The resolver also caches a Title row so the autocomplete can
+        # suggest the answer next time.
+        assert Title.objects.filter(canonical_title="Some Movie").exists()
+
+    def test_resolves_to_tv_via_tmdb(self, monkeypatch) -> None:
+        monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+        q = self._make_any_question(answer="Some Show")
+
+        fake_record = TitleRecord(
+            tmdb_id=99,
+            kind="tv",
+            title="Some Show",
+            year=2020,
+            overview="",
+            popularity=10.0,
+            aliases=(),
+        )
+        with patch(
+            "quizzes.management.commands.resolve_unclassified_target_kind.search_titles",
+            return_value=[fake_record],
+        ):
+            call_command("resolve_unclassified_target_kind")
+
+        q.refresh_from_db()
+        assert q.target_kind == Question.AnswerKind.TV
+
+    def test_leaves_unresolved_when_tmdb_returns_nothing(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+        q = self._make_any_question(answer="Nonexistent")
+
+        with patch(
+            "quizzes.management.commands.resolve_unclassified_target_kind.search_titles",
+            return_value=[],
+        ):
+            out = StringIO()
+            call_command("resolve_unclassified_target_kind", stdout=out)
+
+        q.refresh_from_db()
+        assert q.target_kind == Question.AnswerKind.ANY
+        assert "no usable TMDb result" in out.getvalue()
+
+    def test_dry_run_does_not_write(self, monkeypatch) -> None:
+        monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+        q = self._make_any_question(answer="Some Movie")
+        fake_record = TitleRecord(
+            tmdb_id=42,
+            kind="movie",
+            title="Some Movie",
+            year=2024,
+            overview="",
+            popularity=10.0,
+            aliases=(),
+        )
+        with patch(
+            "quizzes.management.commands.resolve_unclassified_target_kind.search_titles",
+            return_value=[fake_record],
+        ):
+            call_command("resolve_unclassified_target_kind", "--dry-run")
+        q.refresh_from_db()
+        assert q.target_kind == Question.AnswerKind.ANY
