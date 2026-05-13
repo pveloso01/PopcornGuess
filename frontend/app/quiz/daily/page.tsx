@@ -46,7 +46,10 @@ export default function DailyQuizPage() {
   } = useQuizSession();
 
   const [dailyQuiz, setDailyQuiz] = useState<DailyQuiz | null>(null);
-  const [currentAnswer, setCurrentAnswer] = useState('');
+  // The current answer string is owned by AnswerInput's combobox now;
+  // we receive it on submit via the onSubmit callback. No mirror state
+  // needed here — keeping one would only re-introduce the stale-closure
+  // bug that hid the submit silently.
   const [attempts, setAttempts] = useState(0);
   const [feedback, setFeedback] = useState<{
     isCorrect: boolean;
@@ -77,23 +80,30 @@ export default function DailyQuizPage() {
     }
   }, [dailyQuiz, deviceId, session, startSession]);
 
-  const handleSubmitAnswer = async () => {
-    if (!currentAnswer.trim() || !session || !deviceId || !dailyQuiz) return;
+  const handleSubmitAnswer = async (answer: string) => {
+    // The answer is passed in directly rather than read from
+    // `currentAnswer` state — AnswerInput calls onSubmit synchronously
+    // from a keystroke handler, before React has flushed the
+    // setCurrentAnswer that fired on the same tick. Reading from state
+    // here would see the previous render's value (the classic stale
+    // closure) and the submit would silently no-op.
+    const trimmed = answer.trim();
+    if (!trimmed || !session || !deviceId || !dailyQuiz) return;
 
     const currentQuestion = getCurrentQuestion();
     if (!currentQuestion) return;
 
+    const nextAttempt = attempts + 1;
     setIsSubmitting(true);
-    setAttempts(attempts + 1);
+    setAttempts(nextAttempt);
 
     try {
-      // Submit to answer validation endpoint
       const result = (await api.quizzes.submitAnswer(
         {
           quiz_id: dailyQuiz.quiz.id,
           question_id: currentQuestion.id,
-          answer: currentAnswer,
-          attempt_number: attempts + 1,
+          answer: trimmed,
+          attempt_number: nextAttempt,
         },
         deviceId
       )) as {
@@ -103,12 +113,11 @@ export default function DailyQuizPage() {
         attempts_remaining: number;
       };
 
-      // Update session with answer
       await submitAnswer(
         currentQuestion.id,
-        currentAnswer,
+        trimmed,
         result.is_correct,
-        attempts + 1,
+        nextAttempt,
         deviceId
       );
 
@@ -124,7 +133,6 @@ export default function DailyQuizPage() {
         setTimeout(() => {
           if (session.currentQuestionIndex < session.questions.length - 1) {
             nextQuestion();
-            setCurrentAnswer('');
             setAttempts(0);
             setFeedback(null);
           } else {
@@ -146,7 +154,6 @@ export default function DailyQuizPage() {
           setTimeout(() => {
             if (session.currentQuestionIndex < session.questions.length - 1) {
               nextQuestion();
-              setCurrentAnswer('');
               setAttempts(0);
               setFeedback(null);
             } else {
@@ -223,10 +230,7 @@ export default function DailyQuizPage() {
         {/* Answer Input */}
         <div className="mb-6">
           <AnswerInput
-            onSubmit={(answer) => {
-              setCurrentAnswer(answer);
-              handleSubmitAnswer();
-            }}
+            onSubmit={(answer) => handleSubmitAnswer(answer)}
             isCorrect={feedback?.isCorrect || null}
             attemptsUsed={attempts}
             maxAttempts={6}
