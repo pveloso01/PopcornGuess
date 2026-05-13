@@ -4,6 +4,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ClientAuthProvider from '@/contexts/ClientAuthProvider';
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
+import BackendHealthProbe from '@/components/BackendHealthProbe';
 
 /**
  * Typography is system-font-stack first. We previously pulled Geist from
@@ -92,6 +93,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ClientAuthProvider>
+          <BackendHealthProbe />
           <Navbar />
           <div className="min-h-[calc(100vh-4rem)]">{children}</div>
           <Footer />

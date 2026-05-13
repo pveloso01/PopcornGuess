@@ -4,7 +4,7 @@
  * error parsing.
  */
 
-import { api } from './api';
+import { api, ApiNetworkError } from './api';
 
 describe('api client', () => {
   let fetchMock: jest.Mock;
@@ -310,6 +310,55 @@ describe('api client', () => {
       await api.quizzes.getResults(7, 'device-x');
       const [url] = fetchMock.mock.calls[0];
       expect(String(url)).toContain('/quizzes/results/7/');
+    });
+  });
+
+  describe('network failure surfaces ApiNetworkError', () => {
+    it('wraps a fetch-thrown TypeError in ApiNetworkError with the URL', async () => {
+      fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+      const promise = api.quizzes.getDaily('device-x');
+      await expect(promise).rejects.toBeInstanceOf(ApiNetworkError);
+      await expect(promise).rejects.toThrow(/Could not reach the PopcornGuess API/);
+      await expect(promise).rejects.toThrow(/\/quizzes\/daily\//);
+    });
+
+    it('preserves the underlying error message for diagnostics', async () => {
+      fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
+      await expect(api.streaks.getCurrent()).rejects.toThrow(/ECONNREFUSED/);
+    });
+  });
+
+  describe('missing NEXT_PUBLIC_API_URL', () => {
+    const ORIGINAL = process.env.NEXT_PUBLIC_API_URL;
+
+    afterEach(() => {
+      process.env.NEXT_PUBLIC_API_URL = ORIGINAL;
+      jest.resetModules();
+    });
+
+    it('logs a clear error on module load when the env var is missing', () => {
+      delete process.env.NEXT_PUBLIC_API_URL;
+      const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      jest.isolateModules(() => {
+        require('./api');
+      });
+      expect(errSpy).toHaveBeenCalledWith(
+        expect.stringContaining('NEXT_PUBLIC_API_URL is not set')
+      );
+      errSpy.mockRestore();
+    });
+
+    it('throws a configuration error when an API call is made without the env var', async () => {
+      delete process.env.NEXT_PUBLIC_API_URL;
+      const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      let mod: typeof import('./api') | undefined;
+      jest.isolateModules(() => {
+        mod = require('./api');
+      });
+      await expect(mod!.api.quizzes.getDaily()).rejects.toThrow(
+        /NEXT_PUBLIC_API_URL is not configured/
+      );
+      errSpy.mockRestore();
     });
   });
 });

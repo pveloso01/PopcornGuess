@@ -1,17 +1,56 @@
 /**
- * API client for PopcornGuess backend
+ * API client for PopcornGuess backend.
+ *
+ * NEXT_PUBLIC_API_URL must be set explicitly. Previous versions silently
+ * fell back to `http://localhost:8000/api/v1`, which masked real
+ * misconfiguration in production and during port reshuffles in dev
+ * (the daily-quiz page would surface only a generic "Failed to fetch"
+ * with no hint that the env var was wrong). We now log loudly in dev
+ * and throw early on the first call when no URL is configured.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE_URL = (RAW_API_URL ?? '').replace(/\/$/, '');
+
+if (typeof window !== 'undefined' && !RAW_API_URL) {
+  // eslint-disable-next-line no-console
+  console.error(
+    '[api] NEXT_PUBLIC_API_URL is not set. The frontend cannot reach the ' +
+      'backend. Set it in .env (dev) or in the Vercel project (prod) and ' +
+      'restart the dev server.'
+  );
+}
+
+/**
+ * Surface a clearer error than "Failed to fetch". TypeError on fetch
+ * almost always means a network-level miss (DNS, CORS, wrong host).
+ */
+class ApiNetworkError extends Error {
+  constructor(url: string, cause: unknown) {
+    const inner = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Could not reach the PopcornGuess API at ${url}. ` +
+        `Check NEXT_PUBLIC_API_URL and that the backend is healthy. ` +
+        `Underlying error: ${inner}`
+    );
+    this.name = 'ApiNetworkError';
+  }
+}
 
 interface RequestOptions extends RequestInit {
   deviceId?: string;
 }
 
 /**
- * Make an API request with automatic device ID injection
+ * Make an API request with automatic device ID injection.
  */
 async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  if (!API_BASE_URL) {
+    throw new Error(
+      'NEXT_PUBLIC_API_URL is not configured. Set it before making API calls.'
+    );
+  }
+
   const { deviceId, headers, ...fetchOptions } = options;
 
   const requestHeaders: Record<string, string> = {
@@ -19,15 +58,23 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
     ...(headers as Record<string, string>),
   };
 
-  // Add device ID header if provided
   if (deviceId) {
     requestHeaders['X-Device-ID'] = deviceId;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...fetchOptions,
-    headers: requestHeaders,
-  });
+  const url = `${API_BASE_URL}${endpoint}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      headers: requestHeaders,
+    });
+  } catch (cause) {
+    // Browser fetch throws TypeError on DNS / CORS / connection refused.
+    // Wrap it so callers can present a useful message and downstream
+    // observability (Sentry) can group these accurately.
+    throw new ApiNetworkError(url, cause);
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Request failed' }));
@@ -36,6 +83,8 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
 
   return response.json();
 }
+
+export { ApiNetworkError };
 
 /**
  * API client methods
