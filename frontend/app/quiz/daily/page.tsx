@@ -245,7 +245,13 @@ export default function DailyQuizPage() {
 
         {/* Answer Input */}
         <div className="mb-6">
+          {/* `key` keyed on the current question id forces a fresh
+              mount per question. That re-fires autoFocus on the input
+              and clears any leftover local state from the previous
+              question — the player can start typing the moment the
+              next clue appears, no mouse needed. */}
           <AnswerInput
+            key={currentQuestion?.id ?? 'no-question'}
             onSubmit={(answer) => handleSubmitAnswer(answer)}
             isCorrect={feedback?.isCorrect || null}
             attemptsUsed={attempts}
