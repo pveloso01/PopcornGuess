@@ -218,6 +218,13 @@ class Command(BaseCommand):
             hint_2=ladder.rungs[2] if len(ladder.rungs) > 2 else "",
             hint_3=ladder.rungs[3] if len(ladder.rungs) > 3 else "",
             difficulty=Question.Difficulty.MEDIUM,
+            # Scope the autocomplete to the picked title's media kind so
+            # the suggestion list only offers same-kind candidates.
+            target_kind=(
+                Question.AnswerKind.MOVIE
+                if title.kind == "movie"
+                else Question.AnswerKind.TV
+            ),
         )
         QuizQuestion.objects.create(quiz=quiz, question=question, order=1)
 
