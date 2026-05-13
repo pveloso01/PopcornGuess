@@ -129,6 +129,10 @@ const TitleAutocomplete = forwardRef<HTMLInputElement, TitleAutocompleteProps>(
           return;
         }
         if (event.key === 'Enter') {
+          // Enter on a highlighted suggestion picks AND submits in one
+          // press — onSelect is the parent's submit hook for the picked
+          // value (avoids reading not-yet-flushed input state). Two
+          // presses surprised playtesters who expect Wordle-style Enter.
           if (open && activeIndex >= 0 && suggestions[activeIndex]) {
             event.preventDefault();
             const picked = suggestions[activeIndex];

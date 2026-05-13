@@ -113,9 +113,16 @@ export default function AnswerInput({
     return `${base} border-[var(--border)] focus:border-[var(--gold)] focus:shadow-[0_0_0_3px_rgba(212,175,55,0.2)]`;
   };
 
-  const submitCurrent = () => {
-    if (input.trim() && !disabled) {
-      onSubmit(input.trim());
+  /**
+   * Submit a value. If the caller passes an explicit string we use it
+   * directly — this is the path TitleAutocomplete takes when the user
+   * presses Enter on a highlighted suggestion (the picked title hasn't
+   * propagated to our `input` state yet). Otherwise we read from state.
+   */
+  const submitCurrent = (override?: string) => {
+    const value = (override ?? input).trim();
+    if (value && !disabled) {
+      onSubmit(value);
       setInput('');
     }
   };
@@ -158,8 +165,14 @@ export default function AnswerInput({
           <TitleAutocomplete
             value={input}
             onChange={setInput}
-            onSelect={(s) => setInput(s.title)}
-            onSubmit={submitCurrent}
+            onSelect={(s) => {
+              // The user picked a suggestion (mouse or Enter). Submit
+              // with the picked title verbatim — relying on state would
+              // mean reading a value that React hasn't flushed yet.
+              setInput(s.title);
+              submitCurrent(s.title);
+            }}
+            onSubmit={() => submitCurrent()}
             disabled={disabled}
             placeholder={placeholder}
             label="Guess the movie or TV show"
@@ -167,7 +180,7 @@ export default function AnswerInput({
           />
           <button
             type="button"
-            onClick={submitCurrent}
+            onClick={() => submitCurrent()}
             disabled={disabled || !input.trim()}
             className="w-full py-3 px-6 bg-gradient-amber text-[var(--background)] font-bold rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           >
