@@ -43,10 +43,14 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: 'PopcornGuess' }],
   manifest: '/manifest.webmanifest',
-  // Favicon comes from app/icon.svg (Next auto-detects the file). The
-  // explicit apple-touch icon points to the same SVG so iOS shows the
-  // brand mark on the home screen instead of a screenshot.
+  // Explicit favicon links. Next 16's auto-detection of app/icon.svg
+  // wasn't emitting the <link rel="icon"> tag in this configuration —
+  // declaring it here is reliable across Chrome, Firefox, Safari and
+  // the in-browser tab. apple-touch-icon points to the SVG too so iOS
+  // shows the brand mark on the home screen.
   icons: {
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    shortcut: '/icon.svg',
     apple: '/icons/icon.svg',
   },
   openGraph: {

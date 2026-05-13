@@ -1,10 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- PopcornGuess brand mark: amber kernel inside a dark rounded square.
+       Pure shapes (no emoji) so it renders identically in every browser
+       tab. Emoji-based favicons fail silently on Safari, certain Chrome
+       configs, and inside container windows. -->
   <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#0a0a0a"/>
-      <stop offset="1" stop-color="#1a1a1a"/>
+    <linearGradient id="amber" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffb347"/>
+      <stop offset="1" stop-color="#ff8c00"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="12" fill="url(#bg)"/>
-  <text x="50%" y="62%" text-anchor="middle" font-size="40" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif">🍿</text>
+  <rect width="64" height="64" rx="14" fill="#0a0a0a"/>
+  <!-- Striped popcorn-bucket shape: three vertical bands rising to a
+       rounded crown of kernels. Reads at 16×16. -->
+  <g fill="url(#amber)">
+    <path d="M14 28 L22 54 L42 54 L50 28 Z" />
+    <rect x="20" y="28" width="3" height="26" fill="#0a0a0a" opacity="0.4"/>
+    <rect x="30" y="28" width="3" height="26" fill="#0a0a0a" opacity="0.4"/>
+    <rect x="40" y="28" width="3" height="26" fill="#0a0a0a" opacity="0.4"/>
+  </g>
+  <g fill="#fafafa">
+    <circle cx="20" cy="22" r="6"/>
+    <circle cx="30" cy="18" r="6.5"/>
+    <circle cx="42" cy="20" r="6"/>
+    <circle cx="36" cy="26" r="5"/>
+  </g>
 </svg>
