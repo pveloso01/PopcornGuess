@@ -118,7 +118,9 @@ export default function DailyQuizPage() {
           message: 'Correct! 🎉',
         });
 
-        // Move to next question after delay
+        // Pause long enough for the green dot + 'Correct!' banner to
+        // register visually before the next question replaces them.
+        // 1.5s read like a flash to playtesters; 2.2s lands cleanly.
         setTimeout(() => {
           if (session.currentQuestionIndex < session.questions.length - 1) {
             nextQuestion();
@@ -130,7 +132,7 @@ export default function DailyQuizPage() {
             completeSession(deviceId);
             router.push(`/quiz/results?quiz=${session.quizId}`);
           }
-        }, 1500);
+        }, 2200);
       } else {
         setFeedback({
           isCorrect: false,

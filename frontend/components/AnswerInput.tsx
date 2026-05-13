@@ -120,6 +120,20 @@ export default function AnswerInput({
     }
   };
 
+  // Color the attempt dots Wordle-style:
+  //   - Unused attempt        → neutral (gray)
+  //   - Used attempt (wrong)  → red
+  //   - The winning attempt   → green
+  // Without this the dot for the winning guess flashed red right
+  // before the page advanced to the next question.
+  const dotClass = (i: number): string => {
+    if (i >= attemptsUsed) {
+      return 'bg-[var(--background-tertiary)]';
+    }
+    const isWinningAttempt = i === attemptsUsed - 1 && isCorrect === true;
+    return isWinningAttempt ? 'bg-[var(--success)]' : 'bg-[var(--error)]';
+  };
+
   return (
     <div className="w-full max-w-md mx-auto">
       {/* Attempts remaining */}
@@ -127,11 +141,9 @@ export default function AnswerInput({
         {Array.from({ length: maxAttempts }).map((_, i) => (
           <div
             key={i}
-            className={`w-3 h-3 rounded-full transition-all duration-300 ${
-              i < attemptsUsed
-                ? 'bg-[var(--error)]'
-                : 'bg-[var(--background-tertiary)]'
-            }`}
+            className={`w-3 h-3 rounded-full transition-all duration-300 ${dotClass(
+              i
+            )}`}
           />
         ))}
       </div>
