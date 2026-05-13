@@ -93,12 +93,15 @@ class QuizDetailSerializer(serializers.ModelSerializer):
     """
     Serializer for quiz detail view.
 
-    Includes questions but hides answers.
+    Includes questions but hides answers. Only **classified** questions
+    (target_kind is 'movie' or 'tv') are exposed — questions still in
+    the 'any' review queue are filtered out so the autocomplete combobox
+    can always trust the kind label.
     """
 
     category = CategorySerializer(read_only=True)
-    questions = QuestionSerializer(many=True, read_only=True)
-    question_count = serializers.IntegerField(read_only=True)
+    questions = serializers.SerializerMethodField()
+    question_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Quiz
@@ -115,6 +118,19 @@ class QuizDetailSerializer(serializers.ModelSerializer):
             "max_attempts",
             "publish_date",
         ]
+
+    def _classified_questions(self, obj):  # type: ignore[no-untyped-def]
+        # Drop anything still in the 'any' review queue. The daily quiz
+        # would rather be shorter than mislabel a kind.
+        return obj.questions.exclude(target_kind="any")
+
+    def get_questions(self, obj):  # type: ignore[no-untyped-def]
+        return QuestionSerializer(
+            self._classified_questions(obj), many=True
+        ).data
+
+    def get_question_count(self, obj):  # type: ignore[no-untyped-def]
+        return self._classified_questions(obj).count()
 
 
 class DailyPuzzleSerializer(serializers.ModelSerializer):

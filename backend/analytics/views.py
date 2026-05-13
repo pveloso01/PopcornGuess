@@ -335,7 +335,12 @@ def submit_quiz_progress(request):  # type: ignore[no-untyped-def]
         answers.append(answer_data)
         progress.answers = answers
         progress.attempts_used += 1
-        if answer_data.get("is_correct"):
+        # The frontend currently sends camelCase ('isCorrect') because
+        # the answers array lives in JS. Accept either spelling so the
+        # score increments whichever client is talking to us — and so a
+        # legacy snake_case integration test doesn't break.
+        is_correct = answer_data.get("isCorrect", answer_data.get("is_correct"))
+        if is_correct:
             progress.score += 1
         progress.save()
 

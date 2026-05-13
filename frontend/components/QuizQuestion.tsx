@@ -21,7 +21,7 @@ export interface Question {
   audio_url?: string;
   difficulty: 'easy' | 'medium' | 'hard';
   /** 'movie' or 'tv' restricts answer autocomplete; default is 'any'. */
-  target_kind?: 'movie' | 'tv' | 'any';
+  target_kind?: 'movie' | 'tv';
 }
 
 interface QuizQuestionProps {

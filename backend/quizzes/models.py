@@ -90,11 +90,18 @@ class Question(models.Model):
     )
 
     class AnswerKind(models.TextChoices):
-        """Restrict the autocomplete suggestion pool by media kind."""
+        """
+        Restrict the autocomplete suggestion pool by media kind.
 
-        MOVIE = "movie", _("Movie only")
-        TV = "tv", _("TV show only")
-        ANY = "any", _("Either movie or TV")
+        'any' is a 'not yet classified' state — the daily quiz view
+        filters these out rather than guessing wrong. A wrong kind
+        label is worse than no kind label; players see irrelevant
+        suggestions and the share grid telegraphs the wrong genre.
+        """
+
+        MOVIE = "movie", _("Movie")
+        TV = "tv", _("TV show")
+        ANY = "any", _("Unclassified — not eligible for daily quiz")
 
     target_kind = models.CharField(
         _("target answer kind"),
@@ -102,8 +109,9 @@ class Question(models.Model):
         choices=AnswerKind.choices,
         default=AnswerKind.ANY,
         help_text=_(
-            "If 'movie' or 'tv', the answer combobox only suggests titles of "
-            "that kind. Keeps players from wading through irrelevant matches."
+            "Set to 'movie' or 'tv' once the answer is verified. The "
+            "daily quiz endpoint only serves verified questions; 'any' "
+            "is a review queue, not a permissive default."
         ),
     )
 

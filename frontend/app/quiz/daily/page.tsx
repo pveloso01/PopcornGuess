@@ -29,7 +29,7 @@ interface DailyQuiz {
       hint_2?: string;
       hint_3?: string;
       /** Restricts answer autocomplete to a media kind. */
-      target_kind?: 'movie' | 'tv' | 'any';
+      target_kind?: 'movie' | 'tv';
     }>;
   };
 }
@@ -245,7 +245,7 @@ export default function DailyQuizPage() {
                   : 'Type a movie or TV show…'
             }
             useTitleAutocomplete
-            autocompleteKind={currentQuestion?.target_kind ?? 'any'}
+            autocompleteKind={currentQuestion?.target_kind ?? 'movie'}
           />
         </div>
 

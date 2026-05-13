@@ -275,6 +275,44 @@ class TestProgressLifecycle:
         assert complete.status_code == 200
         assert complete.data["is_completed"] is True
 
+    def test_submit_accepts_camel_case_is_correct(
+        self, make_anon, make_quiz
+    ) -> None:
+        # Regression for the case-mismatch bug: the frontend sends
+        # 'isCorrect' (JS convention) but the backend used to only
+        # check 'is_correct'. Score stayed at 0 server-side no matter
+        # how many right answers landed.
+        anon = make_anon()
+        quiz = make_quiz(questions=3)
+        client = APIClient()
+        start = client.post(
+            "/api/v1/progress/start/",
+            {"quiz_id": quiz.id},
+            format="json",
+            HTTP_X_DEVICE_ID=str(anon.device_id),
+        )
+        progress_id = start.data["id"]
+
+        for i in range(3):
+            response = client.post(
+                "/api/v1/progress/submit/",
+                {
+                    "progress_id": progress_id,
+                    "answer": {
+                        "isCorrect": True,
+                        "questionId": i + 1,
+                        "answer": "x",
+                        "attemptsUsed": 1,
+                    },
+                },
+                format="json",
+            )
+            assert response.status_code == 200
+            assert response.data["score"] == i + 1, (
+                f"score should accumulate; got {response.data['score']} "
+                f"after {i + 1} correct submissions"
+            )
+
     def test_start_missing_quiz_id_400(self, make_anon) -> None:
         anon = make_anon()
         response = APIClient().post(
