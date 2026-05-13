@@ -236,6 +236,18 @@ CORS_ALLOWED_ORIGINS = os.getenv(
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Custom headers the frontend sends that aren't in django-cors-headers'
+# default allow-list. X-Device-ID identifies anonymous sessions on every
+# request; X-Service-Token authenticates the admin-seed cron endpoint.
+# Forgetting any of these here is invisible from the backend (curl works
+# because curl ignores CORS) but breaks the browser with "Failed to fetch".
+from corsheaders.defaults import default_headers as _cors_default_headers
+
+CORS_ALLOW_HEADERS = list(_cors_default_headers) + [
+    "x-device-id",
+    "x-service-token",
+]
+
 # Security Settings
 # These are configured with environment-aware defaults
 # https://docs.djangoproject.com/en/4.2/topics/security/
