@@ -28,6 +28,12 @@ interface AnswerInputProps {
    * Use this for movie/TV-title answers.
    */
   useTitleAutocomplete?: boolean;
+  /**
+   * Filter autocomplete suggestions to a media kind. 'movie' or 'tv'
+   * shows only that kind; anything else returns both. Forwarded to
+   * TitleAutocomplete which sends it to the backend.
+   */
+  autocompleteKind?: 'movie' | 'tv' | 'any';
 }
 
 export default function AnswerInput({
@@ -39,6 +45,7 @@ export default function AnswerInput({
   placeholder = 'Type your answer...',
   suggestions,
   useTitleAutocomplete = false,
+  autocompleteKind = 'any',
 }: AnswerInputProps) {
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -173,6 +180,7 @@ export default function AnswerInput({
               submitCurrent(s.title);
             }}
             onSubmit={() => submitCurrent()}
+            kind={autocompleteKind}
             disabled={disabled}
             placeholder={placeholder}
             label="Guess the movie or TV show"

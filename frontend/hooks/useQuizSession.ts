@@ -15,6 +15,8 @@ interface Question {
   hint_1?: string;
   hint_2?: string;
   hint_3?: string;
+  /** Restricts answer autocomplete to a media kind. */
+  target_kind?: 'movie' | 'tv' | 'any';
 }
 
 interface QuizSession {

@@ -43,11 +43,10 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: 'PopcornGuess' }],
   manifest: '/manifest.webmanifest',
+  // Favicon comes from app/icon.svg (Next auto-detects the file). The
+  // explicit apple-touch icon points to the same SVG so iOS shows the
+  // brand mark on the home screen instead of a screenshot.
   icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icons/icon.svg', type: 'image/svg+xml' },
-    ],
     apple: '/icons/icon.svg',
   },
   openGraph: {

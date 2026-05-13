@@ -138,6 +138,45 @@ def _fetch_alternative_titles_impl(tmdb_id: int, kind: str) -> tuple[str, ...]:
     )
 
 
+def search_titles(
+    *, query: str, kind: str | None = None, page: int = 1
+) -> list[TitleRecord]:
+    """
+    Search TMDb live for titles matching `query`.
+
+    Used by the autocomplete view as a fall-through when the local
+    cached pool doesn't have a hit. Caller is responsible for caching
+    the results back to the Title table so subsequent searches are fast.
+
+    `kind`:
+      - None or 'any': search both movies and TV via /search/multi.
+      - 'movie'      : /search/movie (cleaner ranking when we know the kind).
+      - 'tv'         : /search/tv.
+    """
+    kind = (kind or "").lower()
+    path = (
+        "/search/multi"
+        if kind not in ("movie", "tv")
+        else f"/search/{kind}"
+    )
+
+    with _client() as client:
+        data = _request(
+            client,
+            path,
+            _params({"query": query, "page": page, "language": "en-US"}),
+        )
+
+    out: list[TitleRecord] = []
+    for entry in data.get("results", []):
+        media_type = entry.get("media_type") or kind or "movie"
+        if media_type not in ("movie", "tv"):
+            # /search/multi can also return 'person'; skip.
+            continue
+        out.append(_to_record(entry, media_type))
+    return out
+
+
 def fetch_alternative_titles(
     tmdb_id: int, kind: str = "movie"
 ) -> tuple[str, ...]:
@@ -186,6 +225,7 @@ __all__ = [
     "fetch_overview",
     "iter_popular_titles",
     "normalize",
+    "search_titles",
 ]
 
 

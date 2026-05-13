@@ -89,6 +89,24 @@ class Question(models.Model):
         help_text=_("List of acceptable alternative answers for fuzzy matching"),
     )
 
+    class AnswerKind(models.TextChoices):
+        """Restrict the autocomplete suggestion pool by media kind."""
+
+        MOVIE = "movie", _("Movie only")
+        TV = "tv", _("TV show only")
+        ANY = "any", _("Either movie or TV")
+
+    target_kind = models.CharField(
+        _("target answer kind"),
+        max_length=10,
+        choices=AnswerKind.choices,
+        default=AnswerKind.ANY,
+        help_text=_(
+            "If 'movie' or 'tv', the answer combobox only suggests titles of "
+            "that kind. Keeps players from wading through irrelevant matches."
+        ),
+    )
+
     # Content fields based on question type
     image_url = models.URLField(
         _("image URL"),

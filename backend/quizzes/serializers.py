@@ -35,6 +35,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             "audio_url",
             "difficulty",
             "category",
+            "target_kind",
         ]
 
 

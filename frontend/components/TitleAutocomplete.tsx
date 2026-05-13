@@ -25,6 +25,13 @@ interface TitleAutocompleteProps {
   /** ARIA label for the input. */
   label?: string;
   autoFocus?: boolean;
+  /**
+   * Restrict suggestions to a media kind. 'movie' or 'tv' filters the
+   * pool server-side so the player isn't offered irrelevant titles
+   * (e.g. a TV show when the question is movie-only). Default behaviour
+   * is no filter.
+   */
+  kind?: 'movie' | 'tv' | 'any';
 }
 
 const DEBOUNCE_MS = 180;
@@ -49,6 +56,7 @@ const TitleAutocomplete = forwardRef<HTMLInputElement, TitleAutocompleteProps>(
       className,
       label = 'Movie or TV show title',
       autoFocus = false,
+      kind = 'any',
     },
     ref
   ) {
@@ -75,7 +83,11 @@ const TitleAutocomplete = forwardRef<HTMLInputElement, TitleAutocompleteProps>(
       const handle = setTimeout(async () => {
         setLoading(true);
         try {
-          const response = await api.quizzes.autocompleteTitles(trimmed);
+          const response = await api.quizzes.autocompleteTitles(
+            trimmed,
+            8,
+            kind
+          );
           if (seq !== requestSeq.current) return;
           setSuggestions(response.results);
           setActiveIndex(response.results.length > 0 ? 0 : -1);
@@ -92,7 +104,7 @@ const TitleAutocomplete = forwardRef<HTMLInputElement, TitleAutocompleteProps>(
       }, DEBOUNCE_MS);
 
       return () => clearTimeout(handle);
-    }, [value]);
+    }, [value, kind]);
 
     const handleKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLInputElement>) => {

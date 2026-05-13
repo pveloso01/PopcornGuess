@@ -63,6 +63,12 @@ export default function BackendHealthProbe(): React.JSX.Element | null {
     return null;
   }
 
+  // In dev / preview we show the failing URL inline because that's the
+  // information an engineer needs to fix the misconfig fast. In a
+  // production build we strip it — real players don't need (or deserve)
+  // to see backend hostnames in a red banner.
+  const isDev = process.env.NODE_ENV !== 'production';
+
   return (
     <div
       role="alert"
@@ -79,8 +85,17 @@ export default function BackendHealthProbe(): React.JSX.Element | null {
         fontWeight: 600,
       }}
     >
-      The PopcornGuess API is unreachable. Today&apos;s puzzle and your
-      streak may not load. {HEALTH_URL && <code style={{ opacity: 0.85 }}>({HEALTH_URL})</code>}
+      We can&apos;t reach the PopcornGuess server right now. Today&apos;s
+      puzzle and your streak may take a moment to load — please refresh
+      in a few seconds.
+      {isDev && HEALTH_URL && (
+        <>
+          {' '}
+          <code style={{ opacity: 0.6, fontSize: '0.75rem' }}>
+            ({HEALTH_URL})
+          </code>
+        </>
+      )}
     </div>
   );
 }

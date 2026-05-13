@@ -273,9 +273,13 @@ export const api = {
 
     autocompleteTitles: async (
       query: string,
-      limit: number = 8
+      limit: number = 8,
+      kind?: 'movie' | 'tv' | 'any'
     ): Promise<TitleAutocompleteResponse> => {
       const params = new URLSearchParams({ q: query, limit: String(limit) });
+      if (kind === 'movie' || kind === 'tv') {
+        params.set('kind', kind);
+      }
       return apiRequest<TitleAutocompleteResponse>(
         `/quizzes/titles/?${params.toString()}`,
         { method: 'GET' }

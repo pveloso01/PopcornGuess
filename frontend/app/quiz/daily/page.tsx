@@ -28,6 +28,8 @@ interface DailyQuiz {
       hint_1?: string;
       hint_2?: string;
       hint_3?: string;
+      /** Restricts answer autocomplete to a media kind. */
+      target_kind?: 'movie' | 'tv' | 'any';
     }>;
   };
 }
@@ -235,8 +237,15 @@ export default function DailyQuizPage() {
             attemptsUsed={attempts}
             maxAttempts={6}
             disabled={isSubmitting}
-            placeholder="Type a movie or TV show..."
+            placeholder={
+              currentQuestion?.target_kind === 'movie'
+                ? 'Type a movie title…'
+                : currentQuestion?.target_kind === 'tv'
+                  ? 'Type a TV show title…'
+                  : 'Type a movie or TV show…'
+            }
             useTitleAutocomplete
+            autocompleteKind={currentQuestion?.target_kind ?? 'any'}
           />
         </div>
 
@@ -253,12 +262,21 @@ export default function DailyQuizPage() {
           </div>
         )}
 
-        {/* Score */}
+        {/* Score — solved-so-far over total. The previous label
+            ("Current Score: X / N-1") confused playtesters because the
+            denominator advanced every question; this phrasing makes the
+            ratio's meaning unambiguous. */}
         <div className="mt-8 text-center">
           <p className="text-[var(--text-secondary)]">
-            Current Score:{' '}
-            <span className="text-[var(--text-primary)] font-bold">{session.score}</span> /{' '}
-            {progress - 1}
+            Solved{' '}
+            <span className="text-[var(--text-primary)] font-bold">
+              {session.score}
+            </span>{' '}
+            of{' '}
+            <span className="text-[var(--text-primary)] font-bold">
+              {total}
+            </span>{' '}
+            so far
           </p>
         </div>
       </div>

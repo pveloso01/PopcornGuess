@@ -524,6 +524,11 @@ class TitleAutocompleteView(APIView):
     permission_classes = [AllowAny]
     throttle_scope = "autocomplete"
 
+    # Below this number of local hits we ask TMDb live and cache the
+    # results into the Title table. Picked deliberately small so we
+    # don't hammer TMDb for queries the local pool already covers.
+    LIVE_FALLBACK_THRESHOLD = 3
+
     @extend_schema(
         summary="Title autocomplete",
         description=(
@@ -544,24 +549,30 @@ class TitleAutocompleteView(APIView):
         except (TypeError, ValueError):
             limit = 8
 
-        # Prefix match on normalized_title; fall back to substring for safety.
-        qs = (
-            Title.objects.filter(is_active=True)
-            .filter(normalized_title__startswith=query)
-            .order_by("-popularity", "canonical_title")[:limit]
-        )
+        # Optional `kind` filter: 'movie' or 'tv'. Anything else (incl.
+        # 'any' or empty) returns both. Keeps the list short and on-topic
+        # when the question is movie-only or TV-only.
+        kind_filter = (request.query_params.get("kind") or "").strip().lower()
+        if kind_filter not in ("movie", "tv"):
+            kind_filter = ""
 
-        if qs.count() < limit:
-            extra_needed = limit - qs.count()
-            substring_qs = (
-                Title.objects.filter(is_active=True)
-                .filter(normalized_title__contains=query)
-                .exclude(id__in=qs.values("id"))
-                .order_by("-popularity", "canonical_title")[:extra_needed]
-            )
-            results = list(qs) + list(substring_qs)
-        else:
-            results = list(qs)
+        results = self._search_local(query, limit, kind_filter)
+
+        # If the cached pool is too thin, fall through to live TMDb and
+        # cache results into the Title table on the way back. Misses are
+        # silent — if TMDB_API_KEY is unset (dev) or TMDb is down, we
+        # return whatever the local pool produced.
+        if len(results) < self.LIVE_FALLBACK_THRESHOLD:
+            try:
+                self._populate_from_tmdb(
+                    query, kind_filter or None, limit=limit
+                )
+            except Exception:  # noqa: BLE001
+                # Live-search is a best-effort enhancement; never let it
+                # break the autocomplete path.
+                pass
+            else:
+                results = self._search_local(query, limit, kind_filter)
 
         return Response(
             {
@@ -576,6 +587,66 @@ class TitleAutocompleteView(APIView):
                 ]
             }
         )
+
+    @staticmethod
+    def _search_local(
+        query: str, limit: int, kind_filter: str
+    ) -> list[Title]:
+        base = Title.objects.filter(is_active=True)
+        if kind_filter in ("movie", "tv"):
+            base = base.filter(kind=kind_filter)
+
+        prefix = list(
+            base.filter(normalized_title__startswith=query).order_by(
+                "-popularity", "canonical_title"
+            )[:limit]
+        )
+        if len(prefix) >= limit:
+            return prefix
+
+        substring = list(
+            base.filter(normalized_title__contains=query)
+            .exclude(id__in=[t.id for t in prefix])
+            .order_by("-popularity", "canonical_title")[: limit - len(prefix)]
+        )
+        return prefix + substring
+
+    @staticmethod
+    def _populate_from_tmdb(
+        query: str, kind: str | None, *, limit: int
+    ) -> None:
+        """
+        Live-search TMDb and upsert hits into Title so the next
+        local query returns them. Best-effort: no-op silently if
+        TMDB_API_KEY is missing or the upstream is unreachable.
+        """
+        from quizzes.integrations.tmdb import (
+            TMDbError,
+            normalize,
+            search_titles,
+        )
+
+        try:
+            records = search_titles(query=query, kind=kind)
+        except TMDbError:
+            return
+
+        # Cap how many rows we materialise per query so a wildcard like
+        # "the" doesn't dump thousands of TMDb hits into Title.
+        for record in records[: max(limit * 2, 16)]:
+            Title.objects.update_or_create(
+                tmdb_id=record.tmdb_id,
+                defaults={
+                    "kind": record.kind,
+                    "canonical_title": record.title,
+                    "normalized_title": normalize(record.title),
+                    "year": record.year,
+                    # Boost slightly so the freshly-cached row sorts above
+                    # totally unknown rows but below curated favourites.
+                    "popularity": max(record.popularity, 1.0),
+                    "is_active": True,
+                },
+            )
 
 
 _SEED_SCHEMA: dict[str, Any] = {

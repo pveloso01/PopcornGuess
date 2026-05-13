@@ -20,6 +20,8 @@ export interface Question {
   emoji_clues?: string;
   audio_url?: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  /** 'movie' or 'tv' restricts answer autocomplete; default is 'any'. */
+  target_kind?: 'movie' | 'tv' | 'any';
 }
 
 interface QuizQuestionProps {
