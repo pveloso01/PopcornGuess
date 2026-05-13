@@ -30,9 +30,16 @@ from __future__ import annotations
 from collections import defaultdict
 
 from django.core.management.base import BaseCommand
-from django.db.models import Q
 
 from quizzes.models import Question, Title
+
+# Quiz.category.slug values whose answers are unambiguously one kind.
+# `actors`, `directors`, `quotes` are intentionally not here — those
+# can be answered with either a movie or a TV show.
+CATEGORY_KIND_HINTS = {
+    "movies": "movie",
+    "tv-shows": "tv",
+}
 
 
 def _normalize(s: str) -> str:
@@ -66,6 +73,7 @@ class Command(BaseCommand):
         )
 
         updated = 0
+        updated_via_category = 0
         skipped_ambiguous = 0
         skipped_unmatched = 0
 
@@ -78,9 +86,39 @@ class Command(BaseCommand):
             for key in candidates:
                 matched_kinds |= by_norm.get(key, set())
 
+            # Pass 2: if no Title match, fall back to the Quiz category.
+            # Categories `movies` / `tv-shows` are unambiguous; actors,
+            # directors, and quotes can be either, so they stay 'any'.
             if not matched_kinds:
+                # Question → QuizQuestion → Quiz → Category.slug
+                category_slugs = (
+                    question.quizquestion_set.select_related("quiz__category")
+                    .values_list("quiz__category__slug", flat=True)
+                    .distinct()
+                )
+                category_kinds = {
+                    CATEGORY_KIND_HINTS[slug]
+                    for slug in category_slugs
+                    if slug in CATEGORY_KIND_HINTS
+                }
+                if len(category_kinds) == 1:
+                    kind = next(iter(category_kinds))
+                    new_value = (
+                        Question.AnswerKind.MOVIE
+                        if kind == "movie"
+                        else Question.AnswerKind.TV
+                    )
+                    if not dry:
+                        Question.objects.filter(pk=question.pk).update(
+                            target_kind=new_value
+                        )
+                    updated += 1
+                    updated_via_category += 1
+                    continue
+
                 skipped_unmatched += 1
                 continue
+
             if len(matched_kinds) > 1:
                 skipped_ambiguous += 1
                 self.stdout.write(
@@ -108,7 +146,8 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"{'Would update' if dry else 'Updated'}: {updated} questions. "
+                f"{'Would update' if dry else 'Updated'}: {updated} questions "
+                f"(of which {updated_via_category} fell back to Quiz category). "
                 f"Ambiguous (left as 'any'): {skipped_ambiguous}. "
                 f"No match: {skipped_unmatched}."
             )

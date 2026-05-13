@@ -2,7 +2,7 @@
  * Hook for managing quiz session state
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import { saveQuizProgress } from '@/lib/storage';
 
@@ -59,6 +59,15 @@ export function useQuizSession(): UseQuizSessionReturn {
   const [session, setSession] = useState<QuizSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  // Mirror of session so callbacks can read the *current* value, not
+  // a stale closure. Two rapid correct answers used to lose the
+  // second increment because both reads saw score=0 from the same
+  // captured render.
+  const sessionRef = useRef<QuizSession | null>(null);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   /**
    * Start a new quiz session
@@ -118,7 +127,8 @@ export function useQuizSession(): UseQuizSessionReturn {
       attemptsUsed: number,
       deviceId?: string
     ) => {
-      if (!session) return;
+      const current = sessionRef.current;
+      if (!current) return;
 
       try {
         setError(null);
@@ -130,34 +140,37 @@ export function useQuizSession(): UseQuizSessionReturn {
           attemptsUsed,
         };
 
-        // Update backend
-        await api.progress.submit(session.progressId, answerData, deviceId);
+        await api.progress.submit(current.progressId, answerData, deviceId);
 
-        // Update local session
-        const updatedSession = {
-          ...session,
-          answers: [...session.answers, answerData],
-          score: isCorrect ? session.score + 1 : session.score,
-        };
-
-        setSession(updatedSession);
-
-        // Update localStorage
-        saveQuizProgress({
-          quizId: session.quizId.toString(),
-          score: updatedSession.score,
-          totalQuestions: session.questions.length,
-          answers: updatedSession.answers,
-          isCompleted: false,
-          startedAt: session.startTime,
+        // Functional setSession with the latest state — score updates
+        // are now race-proof when two correct answers land close
+        // together. Reading score from `current` (the ref snapshot at
+        // call-time) would have been just as wrong as the closure.
+        setSession((prev) => {
+          if (!prev) return prev;
+          const updated: QuizSession = {
+            ...prev,
+            answers: [...prev.answers, answerData],
+            score: prev.score + (isCorrect ? 1 : 0),
+          };
+          saveQuizProgress({
+            quizId: updated.quizId.toString(),
+            score: updated.score,
+            totalQuestions: updated.questions.length,
+            answers: updated.answers,
+            isCompleted: false,
+            startedAt: updated.startTime,
+          });
+          return updated;
         });
       } catch (err) {
-        const error = err instanceof Error ? err : new Error('Failed to submit answer');
+        const error =
+          err instanceof Error ? err : new Error('Failed to submit answer');
         setError(error);
         console.error('Failed to submit answer:', error);
       }
     },
-    [session]
+    []
   );
 
   /**
