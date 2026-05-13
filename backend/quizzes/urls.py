@@ -11,6 +11,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AdminPuzzleSeedView,
     BlitzQuizView,
     CategoryViewSet,
     DailyQuizView,
@@ -41,6 +42,7 @@ quiz_specific_patterns = [
     path("submit/", SubmitAnswerView.as_view(), name="submit-answer"),
     path("hint/", GetHintView.as_view(), name="get-hint"),
     path("results/<int:quiz_id>/", QuizResultsView.as_view(), name="quiz-results"),
+    path("admin/seed/", AdminPuzzleSeedView.as_view(), name="admin-puzzle-seed"),
 ]
 
 urlpatterns = [

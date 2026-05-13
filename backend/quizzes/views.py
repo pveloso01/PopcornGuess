@@ -2,17 +2,24 @@
 API views for quiz gameplay.
 """
 
+import datetime as dt
+import os
 from difflib import SequenceMatcher
+from typing import Any
 
+from django.db import transaction
 from django.utils import timezone
+from django.utils.text import slugify
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Category, DailyPuzzle, Question, Quiz, Title
+from .models import Category, DailyPuzzle, Question, Quiz, QuizQuestion, Title
 from .serializers import (
     AnswerResultSerializer,
     AnswerSubmissionSerializer,
@@ -568,4 +575,154 @@ class TitleAutocompleteView(APIView):
                     for t in results
                 ]
             }
+        )
+
+
+_SEED_SCHEMA: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["date", "title", "kind", "rungs", "aliases"],
+    "properties": {
+        "date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "year": {"type": ["integer", "null"]},
+        "kind": {"type": "string", "enum": ["movie", "tv"]},
+        "rungs": {
+            "type": "array",
+            "minItems": 6,
+            "maxItems": 6,
+            "items": {"type": "string", "minLength": 24, "maxLength": 280},
+        },
+        "aliases": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 8,
+            "items": {"type": "string", "minLength": 1, "maxLength": 120},
+        },
+    },
+    "additionalProperties": False,
+}
+_SEED_VALIDATOR = Draft202012Validator(_SEED_SCHEMA)
+
+
+class AdminPuzzleSeedView(APIView):
+    """
+    POST /api/v1/quizzes/admin/seed/
+
+    Manual override endpoint — used when the automated generator fails
+    and an operator needs to push a hand-crafted puzzle. Authenticated
+    via the `X-Service-Token` header matched against the
+    `PUZZLE_SEED_TOKEN` environment variable.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Seed a daily puzzle (operator override)",
+        description=(
+            "Replaces or creates the DailyPuzzle for the given date with "
+            "the supplied ladder. Requires service token."
+        ),
+        tags=["admin"],
+        responses={
+            200: OpenApiResponse(description="Seeded"),
+            400: OpenApiResponse(description="Invalid payload"),
+            401: OpenApiResponse(description="Bad service token"),
+        },
+    )
+    def post(self, request):  # type: ignore[no-untyped-def]
+        expected = os.environ.get("PUZZLE_SEED_TOKEN")
+        provided = request.headers.get("X-Service-Token")
+        if not expected or not provided or provided != expected:
+            return Response(
+                {"detail": "Invalid or missing service token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        payload = request.data if isinstance(request.data, dict) else {}
+        try:
+            _SEED_VALIDATOR.validate(payload)
+        except JsonSchemaValidationError as exc:
+            return Response(
+                {"detail": f"Schema error: {exc.message}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            target_date = dt.date.fromisoformat(payload["date"])
+        except ValueError:
+            return Response(
+                {"detail": "Invalid date."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        title_value: str = payload["title"]
+        year = payload.get("year")
+        kind = payload["kind"]
+        rungs: list[str] = list(payload["rungs"])
+        aliases: list[str] = list(payload["aliases"])
+
+        with transaction.atomic():
+            existing = DailyPuzzle.objects.filter(date=target_date).first()
+            if existing is not None:
+                quiz_id = existing.quiz_id
+                existing.delete()
+                Quiz.objects.filter(id=quiz_id).delete()
+
+            slug_root = slugify(title_value)[:120] or "seed"
+            slug = f"seed-{target_date.isoformat()}-{slug_root}"
+            quiz = Quiz.objects.create(
+                title=title_value,
+                slug=slug,
+                description=f"Seeded puzzle for {target_date}",
+                quiz_type=Quiz.QuizType.DAILY,
+                mode=Quiz.PuzzleMode.SYNOPSIS_LADDER,
+                max_attempts=6,
+                is_published=True,
+                publish_date=target_date,
+            )
+
+            full_ladder = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(rungs))
+            question = Question.objects.create(
+                question_type=Question.QuestionType.TEXT,
+                text=rungs[0],
+                correct_answer=title_value,
+                alternative_answers=aliases,
+                explanation=full_ladder,
+                hint_1=rungs[1],
+                hint_2=rungs[2],
+                hint_3=rungs[3],
+                difficulty=Question.Difficulty.MEDIUM,
+            )
+            QuizQuestion.objects.create(quiz=quiz, question=question, order=1)
+
+            DailyPuzzle.objects.create(
+                date=target_date,
+                quiz=quiz,
+                is_active=True,
+                gemini_raw_response={},
+                gemini_prompt_version="manual",
+                gemini_model_name="manual",
+                tmdb_overview_hash="",
+            )
+
+            # Update the Title row if it exists in the pool.
+            title_obj = Title.objects.filter(canonical_title=title_value).first()
+            if title_obj is not None:
+                existing_aliases = list(title_obj.aliases or [])
+                for alias in aliases:
+                    if alias not in existing_aliases:
+                        existing_aliases.append(alias)
+                title_obj.aliases = existing_aliases
+                if year is not None and title_obj.year is None:
+                    title_obj.year = year
+                title_obj.save(update_fields=["aliases", "year"])
+
+        return Response(
+            {
+                "date": target_date.isoformat(),
+                "quiz_id": quiz.id,
+                "kind": kind,
+            },
+            status=status.HTTP_201_CREATED,
         )

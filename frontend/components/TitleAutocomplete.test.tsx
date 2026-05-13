@@ -187,6 +187,181 @@ describe('TitleAutocomplete', () => {
     });
   });
 
+  describe('race conditions and focus management', () => {
+    it('drops stale results when a newer query has started', async () => {
+      let resolveFirst: (v: { results: typeof SUGGESTIONS }) => void = () => {};
+      const firstPromise = new Promise<{ results: typeof SUGGESTIONS }>((r) => {
+        resolveFirst = r;
+      });
+      const secondResults = [
+        { id: 99, title: 'Inception', year: 2010, kind: 'movie' as const },
+      ];
+
+      mockAutocomplete.mockReset();
+      mockAutocomplete.mockImplementationOnce(() => firstPromise);
+      mockAutocomplete.mockResolvedValueOnce({ results: secondResults });
+
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      const input = screen.getByRole('combobox');
+      await user.type(input, 'th');
+      // Wait through the debounce window so the first fetch is in flight.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 200));
+      });
+
+      // Type more to trigger a second (newer) fetch.
+      await user.type(input, 'in');
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 200));
+      });
+
+      // Resolve the original (stale) request after the new one has rendered.
+      await act(async () => {
+        resolveFirst({ results: SUGGESTIONS });
+        await new Promise((r) => setTimeout(r, 50));
+      });
+
+      // Only the second fetch's result should be on screen.
+      const options = screen.queryAllByRole('option');
+      expect(options.some((o) => o.textContent?.includes('Inception'))).toBe(
+        true
+      );
+      expect(options.some((o) => o.textContent?.includes('The Matrix'))).toBe(
+        false
+      );
+    });
+
+    it('re-focusing cancels the pending close timer from blur', async () => {
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      const input = screen.getByRole('combobox');
+      await user.type(input, 'th');
+      await screen.findByRole('listbox');
+      // Blur the input — schedules a close timer.
+      await act(async () => {
+        input.blur();
+      });
+      // Immediately refocus before the 120ms timer fires.
+      await act(async () => {
+        input.focus();
+      });
+      // Wait past the original close timeout.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 200));
+      });
+      // Listbox should still be open because focus cancelled the close.
+      expect(screen.queryByRole('listbox')).toBeInTheDocument();
+    });
+  });
+
+  describe('optional props and rendering', () => {
+    it('mouseDown without an onSelect prop still updates value and closes', async () => {
+      // Harness without onSelect; the mouseDown handler's onSelect?.() is skipped.
+      function NoOnSelectHarness() {
+        const [value, setValue] = require('react').useState('') as [
+          string,
+          (v: string) => void,
+        ];
+        return <TitleAutocomplete value={value} onChange={setValue} />;
+      }
+      const user = userEvent.setup();
+      render(<NoOnSelectHarness />);
+      await user.type(screen.getByRole('combobox'), 'th');
+      await screen.findByRole('listbox');
+      const option = screen.getByText('The Matrix');
+      await act(async () => {
+        option.dispatchEvent(
+          new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+        );
+      });
+      // Listbox closes after selection.
+      await waitFor(() =>
+        expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+      );
+    });
+
+    it('renders TV suggestions with no year', async () => {
+      mockAutocomplete.mockResolvedValue({
+        results: [
+          { id: 1, title: 'Mystery Show', year: null, kind: 'tv' as const },
+        ],
+      });
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      await user.type(screen.getByRole('combobox'), 'my');
+      await screen.findByRole('listbox');
+      // No "·" separator when year is null.
+      expect(screen.getByText('Mystery Show')).toBeInTheDocument();
+      expect(screen.getByText('TV')).toBeInTheDocument();
+    });
+
+    it('renders movie with year using the · separator', async () => {
+      mockAutocomplete.mockResolvedValue({
+        results: [
+          { id: 1, title: 'Some Movie', year: 2024, kind: 'movie' as const },
+        ],
+      });
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      await user.type(screen.getByRole('combobox'), 'so');
+      await screen.findByRole('listbox');
+      expect(screen.getByText(/Movie · 2024/)).toBeInTheDocument();
+    });
+
+    it('Enter with closed listbox and no onSubmit is a no-op', async () => {
+      // No onSubmit prop — covers the falsy branch.
+      mockAutocomplete.mockResolvedValue({ results: [] });
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      await user.type(screen.getByRole('combobox'), 'zzz');
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 250));
+      });
+      // Should not throw.
+      await user.keyboard('{Enter}');
+    });
+
+    it('ArrowUp with no suggestions is a no-op', async () => {
+      mockAutocomplete.mockResolvedValue({ results: [] });
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      await user.type(screen.getByRole('combobox'), 'zz');
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 250));
+      });
+      await user.keyboard('{ArrowUp}');
+      // No throw, no listbox.
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('mouse hover', () => {
+    it('hovering an option updates the active descendant', async () => {
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      await user.type(screen.getByRole('combobox'), 'th');
+      await screen.findByRole('listbox');
+      const options = screen.getAllByRole('option');
+      // userEvent.hover dispatches the right synthetic React events.
+      await user.hover(options[2]);
+      expect(options[2]).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('ArrowDown is a no-op when no suggestions are available', async () => {
+      // 0 results means suggestions array is empty.
+      mockAutocomplete.mockResolvedValue({ results: [] });
+      const user = userEvent.setup();
+      render(<ControlledHarness />);
+      await user.type(screen.getByRole('combobox'), 'zz');
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 250));
+      });
+      await user.keyboard('{ArrowDown}');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+  });
+
   describe('error handling', () => {
     it('survives a failed fetch without crashing', async () => {
       mockAutocomplete.mockRejectedValueOnce(new Error('boom'));

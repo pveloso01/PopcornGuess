@@ -4,8 +4,13 @@ on:
   schedule:
     # 00:30 UTC every day — well before our 00:00 UTC daily rollover, so
     # the puzzle is in place by the time the rollover triggers on the
-    # client side.
+    # client side. This generates `tomorrow`.
     - cron: '30 0 * * *'
+    # 23:00 UTC every day — hot-spare run. Generates `now+2` to keep a
+    # one-day buffer ahead of the primary 00:30 UTC job. If the primary
+    # job fails the next morning, we've already produced what was
+    # "tomorrow" at 23:00 the previous day.
+    - cron: '0 23 * * *'
   workflow_dispatch:
     inputs:
       target_date:
@@ -28,6 +33,13 @@ jobs:
         id: args
         run: |
           ARGS=""
+          # The 23:00 UTC schedule targets `now+2` (the hot-spare slot).
+          # The 00:30 UTC schedule leaves --date empty, letting the
+          # command default to `tomorrow`.
+          if [ "${{ github.event.schedule }}" = "0 23 * * *" ]; then
+            TARGET=$(date -u -d "+2 days" +%Y-%m-%d)
+            ARGS="--date $TARGET"
+          fi
           if [ -n "${{ github.event.inputs.target_date }}" ]; then
             ARGS="$ARGS --date ${{ github.event.inputs.target_date }}"
           fi
@@ -47,7 +59,9 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const target = '${{ github.event.inputs.target_date }}' || 'tomorrow';
+            const schedule = '${{ github.event.schedule }}';
+            const slot = schedule === '0 23 * * *' ? 'hot-spare (now+2)' : 'primary (tomorrow)';
+            const target = '${{ github.event.inputs.target_date }}' || slot;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -56,12 +70,15 @@ jobs:
               body: [
                 'The scheduled puzzle generator failed.',
                 '',
-                `Target date: \`${target}\``,
+                `Target: \`${target}\``,
+                `Schedule: \`${schedule || 'manual'}\``,
                 `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
                 '',
                 'Recovery options:',
                 '1. Re-run the workflow manually (Actions → Generate daily puzzle → Run workflow).',
-                '2. SSH into Fly and run `python manage.py generate_daily_puzzle --tmdb-id <id>` with a hand-picked title.',
-                '3. Check Gemini and TMDb quota.',
+                '2. POST a hand-crafted ladder to `/api/v1/quizzes/admin/seed/` with the service token.',
+                '3. SSH into Fly and run `python manage.py generate_daily_puzzle --tmdb-id <id>`.',
+                '4. SSH into Fly and run `python manage.py backfill_daily_puzzles --days 7` to backfill.',
+                '5. Check Gemini, TMDb, OMDb, and Wikidata quota / status.',
               ].join('\n'),
             });

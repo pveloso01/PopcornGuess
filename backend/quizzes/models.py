@@ -348,6 +348,34 @@ class DailyPuzzle(models.Model):
     total_completions = models.PositiveIntegerField(_("total completions"), default=0)
     average_score = models.FloatField(_("average score"), default=0.0)
 
+    # Audit trail for generation pipeline — supports post-mortems and
+    # prompt-iteration A/B analysis without rehydrating the LLM call.
+    gemini_raw_response = models.JSONField(
+        _("gemini raw response"),
+        default=dict,
+        blank=True,
+        help_text=_("Full Gemini candidate JSON for this puzzle."),
+    )
+    gemini_prompt_version = models.CharField(
+        _("gemini prompt version"),
+        max_length=16,
+        default="",
+        blank=True,
+    )
+    gemini_model_name = models.CharField(
+        _("gemini model name"),
+        max_length=64,
+        default="",
+        blank=True,
+    )
+    tmdb_overview_hash = models.CharField(
+        _("source overview hash"),
+        max_length=64,
+        default="",
+        blank=True,
+        help_text=_("SHA-256 of the synopsis text used as the Gemini input."),
+    )
+
     created_at = models.DateTimeField(_("created at"), auto_now_add=True)
 
     class Meta:

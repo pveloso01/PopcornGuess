@@ -564,3 +564,183 @@ class QuestionModelTestCase(TestCase):
             times_correct=7,
         )
         self.assertEqual(question.success_rate, 70.0)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Additional view edges to push coverage above 90%.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestPracticeQuestionViewExtra:
+    """Cover the category filter branch on practice mode."""
+
+    URL = "/api/v1/quizzes/practice/random/"
+
+    def test_filter_by_category_slug(self, make_quiz, make_category) -> None:
+        """Practice questions can be filtered by category slug."""
+        cat = make_category()
+        quiz = make_quiz(questions=2, category=cat)
+        # The conftest factory doesn't set category on Questions; stamp it
+        # so the slug filter actually matches.
+        for q in quiz.questions.all():
+            q.category = cat
+            q.save()
+        client = APIClient()
+        response = client.get(self.URL, {"category": cat.slug})
+        assert response.status_code == 200
+
+    def test_filter_by_unknown_category_returns_404(self, make_quiz) -> None:
+        """An unknown category slug yields no questions and a 404."""
+        make_quiz(questions=2)
+        response = APIClient().get(self.URL, {"category": "no-such-slug"})
+        assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestSubmitAnswerHintTiers:
+    """Cover the tier-2 and tier-3 hint branches (only reachable when
+    earlier hints are empty)."""
+
+    URL = "/api/v1/quizzes/submit/"
+
+    @pytest.fixture
+    def question_without_tier1_hint(self, make_quiz):
+        quiz = make_quiz(questions=1)
+        q = quiz.questions.first()
+        q.correct_answer = "Inception"
+        q.hint_1 = ""  # falsy → falls through to tier-2 check
+        q.hint_2 = "Year: 2010"
+        q.hint_3 = "Lead: DiCaprio"
+        q.save()
+        return quiz, q
+
+    def test_attempt_4_falls_through_to_hint_2(
+        self, question_without_tier1_hint
+    ) -> None:
+        """When hint_1 is empty, attempt_number 4 serves hint_2."""
+        quiz, q = question_without_tier1_hint
+        response = APIClient().post(
+            self.URL,
+            {
+                "quiz_id": quiz.id,
+                "question_id": q.id,
+                "answer": "Avatar",
+                "attempt_number": 4,
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.data["hint"] == "Year: 2010"
+
+    def test_attempt_5_falls_through_to_hint_3(self, make_quiz) -> None:
+        """When hint_1 and hint_2 are empty, attempt_number 5 serves hint_3."""
+        quiz = make_quiz(questions=1)
+        q = quiz.questions.first()
+        q.correct_answer = "Inception"
+        q.hint_1 = ""
+        q.hint_2 = ""
+        q.hint_3 = "Lead: DiCaprio"
+        q.save()
+        response = APIClient().post(
+            self.URL,
+            {
+                "quiz_id": quiz.id,
+                "question_id": q.id,
+                "answer": "Avatar",
+                "attempt_number": 5,
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.data["hint"] == "Lead: DiCaprio"
+
+
+@pytest.mark.django_db
+class TestGetHintViewHintsRemaining:
+    """hints_remaining calculation when only one hint exists."""
+
+    URL = "/api/v1/quizzes/hint/"
+
+    def test_hints_remaining_zero_when_only_one_hint(self, make_quiz) -> None:
+        """If the question has only hint_1, requesting hint_1 leaves zero remaining."""
+        quiz = make_quiz(questions=1)
+        q = quiz.questions.first()
+        q.hint_1 = "only"
+        q.hint_2 = ""
+        q.hint_3 = ""
+        q.save()
+        response = APIClient().post(
+            self.URL,
+            {"question_id": q.id, "hint_number": 1},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.data["hint"] == "only"
+        assert response.data["hints_remaining"] == 0
+
+
+@pytest.mark.django_db
+class TestQuizResultsWithProgress:
+    """Cover the progress-id branch + shareable-text grid generation."""
+
+    def test_results_with_valid_progress_id(self, make_user, make_quiz) -> None:
+        """A valid progress_id surfaces score, percentage and is_perfect."""
+        from analytics.models import UserProgress
+
+        user = make_user()
+        quiz = make_quiz(questions=2)
+        progress = UserProgress.objects.create(
+            user=user,
+            quiz=quiz,
+            total_questions=2,
+            score=2,
+            time_taken_seconds=15,
+            answers=[
+                {"isCorrect": True, "value": "A"},
+                {"isCorrect": True, "value": "B"},
+            ],
+        )
+        response = APIClient().get(
+            f"/api/v1/quizzes/results/{quiz.id}/?progress_id={progress.id}"
+        )
+        assert response.status_code == 200
+        assert response.data["score"] == 2
+        assert response.data["is_perfect"] is True
+        assert response.data["time_taken_seconds"] == 15
+        # Grid embeds at least one correct-marker glyph.
+        assert "🟩" in response.data["shareable_text"]
+
+    def test_results_with_unknown_progress_id_ignores_it(
+        self, make_quiz
+    ) -> None:
+        """An unknown progress_id is silently ignored — score falls back to 0."""
+        quiz = make_quiz(questions=1)
+        response = APIClient().get(
+            f"/api/v1/quizzes/results/{quiz.id}/?progress_id=99999999"
+        )
+        assert response.status_code == 200
+        assert response.data["score"] == 0
+
+    def test_results_grid_with_incorrect_answers(
+        self, make_user, make_quiz
+    ) -> None:
+        """The shareable grid uses the wrong-answer glyph for incorrect rows."""
+        from analytics.models import UserProgress
+
+        user = make_user()
+        quiz = make_quiz(questions=2)
+        progress = UserProgress.objects.create(
+            user=user,
+            quiz=quiz,
+            total_questions=2,
+            score=1,
+            answers=[
+                {"isCorrect": True, "value": "A"},
+                {"isCorrect": False, "value": "B"},
+            ],
+        )
+        response = APIClient().get(
+            f"/api/v1/quizzes/results/{quiz.id}/?progress_id={progress.id}"
+        )
+        assert "🟥" in response.data["shareable_text"]

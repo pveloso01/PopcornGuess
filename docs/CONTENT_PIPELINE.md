@@ -35,12 +35,36 @@ touching anything.
 
 | File | Role |
 |---|---|
-| `.github/workflows/generate-puzzle.yml` | Cron + invocation |
+| `.github/workflows/generate-puzzle.yml` | Cron + invocation (00:30 UTC primary + 23:00 UTC hot-spare) |
 | `.github/workflows/refresh-titles.yml`  | Weekly title-pool refresh |
-| `backend/quizzes/integrations/tmdb.py`  | TMDb HTTP wrapper |
-| `backend/quizzes/integrations/gemini.py`| Gemini wrapper + JSON schema |
+| `backend/quizzes/integrations/tmdb.py`  | TMDb HTTP wrapper (3 retries + circuit breaker) |
+| `backend/quizzes/integrations/omdb.py`  | OMDb fallback (tier 2) |
+| `backend/quizzes/integrations/wikidata.py` | Wikidata SPARQL fallback (tier 3) |
+| `backend/quizzes/integrations/circuit.py` | In-memory circuit breaker shared across integrations |
+| `backend/quizzes/integrations/gemini.py`| Gemini wrapper, returns `(LadderPuzzle, raw_response)` |
 | `backend/quizzes/management/commands/generate_daily_puzzle.py` | Pipeline entry point |
+| `backend/quizzes/management/commands/backfill_daily_puzzles.py` | N-day bulk backfill |
 | `backend/quizzes/management/commands/import_titles.py`         | Pool refresh entry point |
+| `POST /api/v1/quizzes/admin/seed/`      | Manual operator override (service-token auth) |
+
+## Reliability layers
+
+1. **Per-source retry** — TMDb / OMDb / Wikidata / Gemini each retry 3
+   times with exponential backoff (1s, 2s, 4s; capped at 10s).
+2. **Circuit breaker** — opens after 5 consecutive failures of a named
+   upstream, fast-fails for 10 minutes, then half-opens for a probe.
+3. **Overview fallback chain** — TMDb → OMDb → Wikidata. Only when all
+   three fail back-to-back does the generator surface a `CommandError`.
+4. **Hot-spare cron** — a second GitHub Actions run at 23:00 UTC
+   pre-generates `now+2` so a primary 00:30 UTC failure does not result
+   in an empty `/daily` endpoint the next morning.
+5. **Audit trail** — every `DailyPuzzle` row stores the full Gemini
+   response, prompt version, model id, and a SHA-256 of the source
+   synopsis, for post-mortem and prompt A/B work.
+6. **Admin override** — operators can `POST` a hand-built ladder to
+   `/api/v1/quizzes/admin/seed/` when everything else is down.
+7. **Bulk backfill** — `manage.py backfill_daily_puzzles --days 90`
+   pre-builds a buffer so the daily cron has slack.
 
 ---
 
@@ -100,12 +124,13 @@ GitHub Actions workflow auto-files a tagged issue.
 
 | Failure | Symptom | Auto-recovery | Manual fix |
 |---|---|---|---|
-| Gemini quota | 429 from Google | None | Wait for daily reset; or rerun later |
-| TMDb 5xx | One retry then error | Retry once with Retry-After | Re-run workflow |
-| Bad JSON / schema | Generation fails | Issue filed | Re-run workflow (Gemini is non-deterministic) |
+| Gemini quota / 5xx | 429 / 5xx | 3 retries + circuit breaker; hot-spare run at 23:00 UTC | Wait, or POST to `/admin/seed/` |
+| TMDb 5xx | 502/503/504 | 3 retries; OMDb takes over; Wikidata as final tier | Re-run workflow |
+| Bad JSON / schema | Generation fails | Issue filed; hot-spare run still has a day | Re-run workflow |
 | Title leaks into rung | Generation fails | Issue filed | Re-run workflow |
 | All eligible titles used | "No eligible titles" | None | Run `import_titles --pages 25` |
 | Race (puzzle already exists) | "Daily puzzle already exists for X" | Skip (idempotent) | None needed |
+| All three sources down | `CommandError: All overview sources failed` | None | POST to `/admin/seed/` with a hand-built ladder |
 
 ---
 

@@ -214,3 +214,78 @@ curl -sf https://api.popcornguess.com/health/ | jq .
 curl -sf https://popcornguess.com/sitemap.xml | head -c 200
 curl -sf https://popcornguess.com/robots.txt | head
 ```
+
+---
+
+## Admin override: seeding a puzzle manually
+
+When the automated pipeline is wedged (Gemini outage, prompt regression,
+all three overview sources down), an operator can push a hand-built
+ladder straight into the database.
+
+### Option A — REST endpoint
+
+```bash
+curl -X POST https://api.popcornguess.com/api/v1/quizzes/admin/seed/ \
+  -H "Content-Type: application/json" \
+  -H "X-Service-Token: $PUZZLE_SEED_TOKEN" \
+  -d '{
+    "date": "2026-06-15",
+    "title": "The Matrix",
+    "year": 1999,
+    "kind": "movie",
+    "rungs": [
+      "A reclusive coder begins to suspect his ordered life is a stage set.",
+      "A whispered question and a pill choice tear that stage down.",
+      "Two operatives smuggle him into a war hidden behind every screen.",
+      "He learns the rules of a fight where belief bends the laws of physics.",
+      "A mentor wagers everything on the prophecy that has finally found a body.",
+      "Bullets slow, code rewrites itself, and a hallway phone rings just in time."
+    ],
+    "aliases": ["The Matrix", "The Matrix (1999)"]
+  }'
+```
+
+The endpoint:
+- requires the `X-Service-Token` header to match the `PUZZLE_SEED_TOKEN`
+  environment variable (set on Fly via `fly secrets set`);
+- validates the payload against the same schema Gemini's output must
+  satisfy (6 rungs, 2–8 aliases, length bounds);
+- replaces an existing `DailyPuzzle` on the same date — atomically;
+- writes `gemini_prompt_version = "manual"` so the audit trail shows
+  these rows were operator-seeded.
+
+### Option B — Bulk backfill
+
+To pre-build a 90-day buffer (recommended at launch and after any
+multi-day outage):
+
+```bash
+fly ssh console -a popcornguess-api \
+  -C "python manage.py backfill_daily_puzzles --days 90"
+```
+
+Per-day failures do not abort the run — the command prints a summary
+`N succeeded, M skipped, K failed` and exits 0.
+
+### Option C — Admin action
+
+For a one-off "regenerate yesterday because the rungs are weak":
+
+1. Log into `/admin/`.
+2. Select the affected rows in `Daily puzzles`.
+3. Choose **Regenerate selected daily puzzles** from the actions menu.
+
+This deletes the rows and re-runs `generate_daily_puzzle` for each
+date.
+
+### When everything fails
+
+If all of the above are blocked, the lowest-tech fallback is:
+
+```bash
+fly ssh console -a popcornguess-api -C "python manage.py shell"
+```
+
+and write the rows by hand. The audit fields (`gemini_raw_response`,
+`gemini_prompt_version`, `tmdb_overview_hash`) can be left empty.

@@ -5,6 +5,8 @@
  */
 
 import {
+  copyToClipboard,
+  generateDetailedShareText,
   generateEmojiGrid,
   generateLadderGrid,
   generateLadderShareText,
@@ -12,6 +14,8 @@ import {
   getScoreBadge,
   getTwitterShareUrl,
   getWhatsAppShareUrl,
+  isNativeShareSupported,
+  nativeShare,
   type LadderAttempt,
 } from './shareFormat';
 
@@ -175,5 +179,177 @@ describe('getScoreBadge', () => {
 
   it('returns newbie below 40%', () => {
     expect(getScoreBadge(2, 10).name).toBe('Newbie');
+  });
+
+  it('returns Film Buff at the 60% tier', () => {
+    expect(getScoreBadge(6, 10).name).toBe('Film Buff');
+  });
+
+  it('returns Casual Viewer at the 40% tier', () => {
+    expect(getScoreBadge(4, 10).name).toBe('Casual Viewer');
+  });
+});
+
+describe('generateDetailedShareText', () => {
+  const base = {
+    quizId: 'q1',
+    date: '2026-05-01',
+    score: 2,
+    totalQuestions: 3,
+    answers: [
+      { isCorrect: true, attemptsUsed: 1 },
+      { isCorrect: true, attemptsUsed: 5 },
+      { isCorrect: false, attemptsUsed: 6 },
+    ],
+  };
+
+  it('renders per-question emoji and X/6 for wrong answers', () => {
+    const text = generateDetailedShareText(base, false);
+    expect(text).toContain('Q1:');
+    expect(text).toContain('Q2:');
+    expect(text).toContain('Q3:');
+    expect(text).toContain('🟩 1/6');
+    expect(text).toContain('🟨 5/6');
+    expect(text).toContain('🟥 X/6');
+    // No URL when includeUrl is false.
+    expect(text).not.toContain('popcornguess.com');
+  });
+
+  it('appends URL when includeUrl is true (default)', () => {
+    const text = generateDetailedShareText(base);
+    expect(text).toContain('https://popcornguess.com');
+  });
+
+  it('appends streak line when streak >= 2', () => {
+    const text = generateDetailedShareText({ ...base, streak: 5 }, false);
+    expect(text).toContain('🔥 5 day streak!');
+  });
+
+  it('omits streak line when streak is 1', () => {
+    const text = generateDetailedShareText({ ...base, streak: 1 }, false);
+    expect(text).not.toContain('streak');
+  });
+});
+
+describe('generateShareText streak branch', () => {
+  it('shows streak line when streak >= 2', () => {
+    const text = generateShareText(
+      {
+        quizId: 'q1',
+        date: '2026-05-01',
+        score: 1,
+        totalQuestions: 2,
+        answers: [
+          { isCorrect: true, attemptsUsed: 1 },
+          { isCorrect: false, attemptsUsed: 6 },
+        ],
+        streak: 3,
+      },
+      true
+    );
+    expect(text).toContain('🔥 3 day streak!');
+    expect(text).toContain('https://popcornguess.com');
+  });
+});
+
+describe('share URL encoding edge cases', () => {
+  it('twitter encodes special chars', () => {
+    expect(getTwitterShareUrl('a&b c?')).toBe(
+      'https://twitter.com/intent/tweet?text=a%26b%20c%3F'
+    );
+  });
+
+  it('whatsapp encodes special chars', () => {
+    expect(getWhatsAppShareUrl('a?b#c=d')).toBe(
+      'https://wa.me/?text=a%3Fb%23c%3Dd'
+    );
+  });
+});
+
+describe('copyToClipboard', () => {
+  let originalClipboard: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  });
+
+  afterEach(() => {
+    if (originalClipboard) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboard);
+    }
+  });
+
+  it('uses navigator.clipboard.writeText on the happy path', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      writable: true,
+      value: { writeText },
+    });
+    const result = await copyToClipboard('hi');
+    expect(result).toBe(true);
+    expect(writeText).toHaveBeenCalledWith('hi');
+  });
+
+  it('falls back to execCommand when navigator.clipboard.writeText throws', async () => {
+    const writeText = jest.fn().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      writable: true,
+      value: { writeText },
+    });
+    const execCommandSpy = jest.fn().mockReturnValue(true);
+    document.execCommand = execCommandSpy as unknown as typeof document.execCommand;
+    const result = await copyToClipboard('hi');
+    expect(result).toBe(true);
+    expect(execCommandSpy).toHaveBeenCalledWith('copy');
+  });
+});
+
+describe('nativeShare', () => {
+  let originalShare: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalShare = Object.getOwnPropertyDescriptor(navigator, 'share');
+  });
+
+  afterEach(() => {
+    if (originalShare) {
+      Object.defineProperty(navigator, 'share', originalShare);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (navigator as any).share;
+    }
+  });
+
+  it('returns false when navigator.share is undefined', async () => {
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    expect(await nativeShare('t', 'x')).toBe(false);
+    expect(isNativeShareSupported()).toBe(false);
+  });
+
+  it('returns true when navigator.share resolves', async () => {
+    const share = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      writable: true,
+      value: share,
+    });
+    expect(await nativeShare('t', 'x', 'https://example')).toBe(true);
+    expect(share).toHaveBeenCalledWith({ title: 't', text: 'x', url: 'https://example' });
+  });
+
+  it('returns false when navigator.share rejects (user cancel)', async () => {
+    const share = jest.fn().mockRejectedValue(new Error('cancelled'));
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      writable: true,
+      value: share,
+    });
+    expect(await nativeShare('t', 'x')).toBe(false);
   });
 });

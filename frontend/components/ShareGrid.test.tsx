@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ShareGrid from './ShareGrid';
 
@@ -77,6 +77,64 @@ describe('ShareGrid', () => {
       await screen.findByRole('button', { name: 'Copied ✓' })
     ).toBeInTheDocument();
   });
+
+  it('uses window.location.origin as the default siteUrl', () => {
+    const { siteUrl: _omitted, ...propsWithoutSite } = baseProps;
+    void _omitted;
+    render(<ShareGrid {...propsWithoutSite} />);
+    // jsdom defaults to http://localhost — that or the hard fallback must appear.
+    const text = screen.getByLabelText('Shareable result grid').textContent ?? '';
+    expect(
+      text.includes('http://localhost') ||
+        text.includes('https://popcornguess.com')
+    ).toBe(true);
+  });
+
+  it('hides the h3 when no caption is provided', () => {
+    render(<ShareGrid {...baseProps} />);
+    // Without caption, no h3 heading rendered.
+    expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument();
+  });
+
+  it('honours the siteUrl prop in the share text body', () => {
+    render(<ShareGrid {...baseProps} siteUrl="https://custom.test/path" />);
+    expect(screen.getByLabelText('Shareable result grid')).toHaveTextContent(
+      'https://custom.test/path'
+    );
+  });
+
+  it('falls back to copy when native share is rejected (user cancel)', async () => {
+    // nativeShare returns false on rejection; ShareGrid then invokes handleCopy.
+    const shareMock = jest.fn().mockRejectedValue(new Error('cancelled'));
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      writable: true,
+      value: shareMock,
+    });
+    const { waitFor: rtlWaitFor, act: rtlAct } = await import(
+      '@testing-library/react'
+    );
+    render(<ShareGrid {...baseProps} />);
+    const shareBtn = screen.getByRole('button', { name: 'Share' });
+    await rtlAct(async () => {
+      shareBtn.click();
+      // Flush several microtask ticks so:
+      // 1) navigator.share rejects → nativeShare resolves false
+      // 2) handleCopy runs and awaits navigator.clipboard.writeText
+      for (let i = 0; i < 5; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await Promise.resolve();
+      }
+    });
+    expect(shareMock).toHaveBeenCalled();
+    await rtlWaitFor(() => {
+      const writeCalled = writeTextSpy.mock.calls.length > 0;
+      const execCalled =
+        (document.execCommand as jest.Mock).mock.calls.length > 0;
+      expect(writeCalled || execCalled).toBe(true);
+    });
+  });
+
 
   it('exposes Twitter and WhatsApp deep links with encoded text', () => {
     render(<ShareGrid {...baseProps} />);

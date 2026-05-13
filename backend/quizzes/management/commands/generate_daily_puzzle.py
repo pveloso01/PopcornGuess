@@ -2,9 +2,9 @@
 Generate tomorrow's daily synopsis-ladder puzzle.
 
 Pulls a candidate Title from the active pool that hasn't been used in the
-last 365 days, fetches its TMDb overview, asks Gemini for a 6-rung clue
-ladder, validates the JSON, and creates the Quiz/Question/DailyPuzzle
-rows.
+last 365 days, fetches its synopsis through a TMDb → OMDb → Wikidata
+fallback chain, asks Gemini for a 6-rung clue ladder, validates the
+JSON, and creates the Quiz/Question/DailyPuzzle rows.
 
 Run from GitHub Actions cron daily at 00:30 UTC:
     python manage.py generate_daily_puzzle
@@ -16,6 +16,8 @@ Or for a specific date / title:
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import logging
 from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
@@ -23,9 +25,52 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
-from quizzes.integrations.gemini import GeminiError, generate_ladder
+from quizzes.integrations.gemini import (
+    GeminiError,
+    LadderPuzzle,
+    generate_ladder,
+    model_name as gemini_model_name,
+)
+from quizzes.integrations.omdb import OMDbError, fetch_overview as omdb_fetch_overview
 from quizzes.integrations.tmdb import TMDbError, fetch_overview
+from quizzes.integrations.wikidata import (
+    WikidataError,
+    fetch_overview as wikidata_fetch_overview,
+)
 from quizzes.models import DailyPuzzle, Question, Quiz, QuizQuestion, Title
+
+logger = logging.getLogger(__name__)
+
+
+def fetch_overview_with_fallback(
+    tmdb_id: int, kind: str, title: str, year: int | None
+) -> str:
+    """
+    Try TMDb first, then OMDb, then Wikidata. Returns the first overview
+    that comes back non-empty. Raises CommandError only when all three
+    fail back-to-back.
+    """
+    try:
+        text = fetch_overview(tmdb_id, kind=kind)
+        if text:
+            return text
+        logger.warning("TMDb returned empty overview for tmdb_id=%s", tmdb_id)
+    except (TMDbError, Exception) as exc:  # pragma: no cover - logged
+        logger.warning("TMDb overview failed for tmdb_id=%s: %s", tmdb_id, exc)
+
+    try:
+        return omdb_fetch_overview(title, year=year)
+    except (OMDbError, Exception) as exc:  # pragma: no cover - logged
+        logger.warning("OMDb overview failed for %r: %s", title, exc)
+
+    try:
+        return wikidata_fetch_overview(title, year=year)
+    except (WikidataError, Exception) as exc:  # pragma: no cover - logged
+        logger.warning("Wikidata overview failed for %r: %s", title, exc)
+
+    raise CommandError(
+        f"All overview sources failed for {title!r} (tmdb_id={tmdb_id})."
+    )
 
 
 class Command(BaseCommand):
@@ -72,13 +117,15 @@ class Command(BaseCommand):
             f"Picked: {title.canonical_title} ({title.year}) [{title.kind}]"
         )
 
-        try:
-            synopsis = fetch_overview(title.tmdb_id, kind=title.kind)
-        except TMDbError as exc:
-            raise CommandError(f"TMDb overview fetch failed: {exc}") from exc
+        synopsis = fetch_overview_with_fallback(
+            tmdb_id=title.tmdb_id,
+            kind=title.kind,
+            title=title.canonical_title,
+            year=title.year,
+        )
 
         try:
-            ladder = generate_ladder(
+            ladder, raw_response = generate_ladder(
                 title=title.canonical_title,
                 year=title.year,
                 synopsis=synopsis,
@@ -96,7 +143,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Dry-run: nothing written."))
             return
 
-        self._persist(title, ladder, target_date)
+        self._persist(title, ladder, target_date, synopsis, raw_response)
         self.stdout.write(self.style.SUCCESS(f"Wrote DailyPuzzle for {target_date}"))
 
     def _resolve_date(self, raw: str | None) -> dt.date:
@@ -122,7 +169,6 @@ class Command(BaseCommand):
             .exclude(slug="")
             .values_list("slug", flat=True)
         )
-        # Slug is `tmdb-<id>-<slug>`. Skip those.
         used_tmdb_ids = {
             int(slug.split("-")[1])
             for slug in recently_used_ids
@@ -144,12 +190,12 @@ class Command(BaseCommand):
     def _persist(
         self,
         title: Title,
-        ladder: Any,
+        ladder: LadderPuzzle,
         target_date: dt.date,
+        synopsis: str,
+        raw_response: dict[str, Any],
     ) -> None:
         slug = f"tmdb-{title.tmdb_id}-{slugify(title.canonical_title)[:120]}"
-        # The 6 rungs become 6 incremental hints inside ONE Question.
-        # Player has 6 attempts; each wrong answer reveals the next rung.
         full_ladder = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(ladder.rungs))
 
         quiz = Quiz.objects.create(
@@ -175,7 +221,6 @@ class Command(BaseCommand):
         )
         QuizQuestion.objects.create(quiz=quiz, question=question, order=1)
 
-        # Cache aliases on the Title for the autocomplete + answer-matcher.
         existing_aliases = list(title.aliases or [])
         for alias in ladder.aliases:
             if alias not in existing_aliases:
@@ -183,4 +228,14 @@ class Command(BaseCommand):
         title.aliases = existing_aliases
         title.save(update_fields=["aliases"])
 
-        DailyPuzzle.objects.create(date=target_date, quiz=quiz, is_active=True)
+        DailyPuzzle.objects.create(
+            date=target_date,
+            quiz=quiz,
+            is_active=True,
+            gemini_raw_response=raw_response or {},
+            gemini_prompt_version=ladder.prompt_version,
+            gemini_model_name=gemini_model_name(),
+            tmdb_overview_hash=hashlib.sha256(
+                synopsis.encode("utf-8")
+            ).hexdigest(),
+        )

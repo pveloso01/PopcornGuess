@@ -128,6 +128,29 @@ describe('api client', () => {
       const [, init] = fetchMock.mock.calls[0];
       expect(JSON.parse(init.body)).toEqual({ device_id: 'device-9' });
     });
+
+    it('sync merges optional progress/streak/stats payload', async () => {
+      fetchMock.mockResolvedValue(ok({}));
+      await api.anonymous.sync('device-9', {
+        progress_data: { a: 1 },
+        streak_data: { b: 2 },
+        stats_data: { c: 3 },
+      });
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init.body)).toEqual({
+        device_id: 'device-9',
+        progress_data: { a: 1 },
+        streak_data: { b: 2 },
+        stats_data: { c: 3 },
+      });
+    });
+
+    it('register POSTs an empty body when called with no args', async () => {
+      fetchMock.mockResolvedValue(ok({}));
+      await api.anonymous.register();
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init.body)).toEqual({});
+    });
   });
 
   describe('streaks endpoints', () => {
@@ -219,12 +242,56 @@ describe('api client', () => {
     });
   });
 
+  describe('header and deviceId edge cases', () => {
+    it('merges caller-supplied headers with defaults', async () => {
+      fetchMock.mockResolvedValue(ok({}));
+      await api.quizzes.submitAnswer(
+        { quiz_id: 1, question_id: 2, answer: 'x', attempt_number: 1 },
+        'device-1'
+      );
+      const [, init] = fetchMock.mock.calls[0];
+      // Default Content-Type still present; X-Device-ID injected too.
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(init.headers['X-Device-ID']).toBe('device-1');
+    });
+
+    it('does not add X-Device-ID for falsy deviceId', async () => {
+      fetchMock.mockResolvedValue(ok({}));
+      await api.quizzes.getDaily('');
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init.headers['X-Device-ID']).toBeUndefined();
+    });
+
+    it('falls back to HTTP <status> when body parses without a detail field', async () => {
+      fetchMock.mockResolvedValue(notOk(503, {}));
+      // error.detail is undefined → falls back to `HTTP ${status}`.
+      await expect(api.quizzes.getDaily()).rejects.toThrow('HTTP 503');
+    });
+  });
+
   describe('quizzes.getBlitz and getPractice', () => {
     it('getBlitz hits /quizzes/blitz/start/', async () => {
       fetchMock.mockResolvedValue(ok({}));
       await api.quizzes.getBlitz('device-x');
       const [url] = fetchMock.mock.calls[0];
       expect(String(url)).toContain('/quizzes/blitz/start/');
+    });
+
+    it('getPractice forwards category too', async () => {
+      fetchMock.mockResolvedValue(ok({}));
+      await api.quizzes.getPractice('device-x', {
+        category: 'sci-fi',
+      });
+      const [url] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain('category=sci-fi');
+    });
+
+    it('getPractice with no options yields an empty query string', async () => {
+      fetchMock.mockResolvedValue(ok({}));
+      await api.quizzes.getPractice();
+      const [url] = fetchMock.mock.calls[0];
+      // No params appended.
+      expect(String(url)).toMatch(/\/quizzes\/practice\/random\/\?$/);
     });
 
     it('getPractice forwards count + difficulty', async () => {

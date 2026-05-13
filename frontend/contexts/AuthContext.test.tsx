@@ -264,6 +264,312 @@ describe('AuthContext', () => {
     expect((thrown as Error).message).toBe('Wrong password.');
   });
 
+  it('silently refreshes when /auth/user/ returns 401 and refresh succeeds', async () => {
+    let userCallCount = 0;
+    setupFetch((call) => {
+      if (call.url.endsWith('/auth/user/')) {
+        userCallCount += 1;
+        if (userCallCount === 1) {
+          return jsonResponse(401, { detail: 'expired' });
+        }
+        return jsonResponse(200, {
+          id: 7,
+          username: 'silentpedro',
+          email: 's@b.com',
+        });
+      }
+      if (call.url.endsWith('/auth/token/refresh/')) {
+        return jsonResponse(200, {});
+      }
+      return jsonResponse(404, {});
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('email')).toHaveTextContent('s@b.com')
+    );
+    expect(screen.getByTestId('auth')).toHaveTextContent('in');
+    const urls = fetchCalls.map((c) => c.url);
+    expect(urls.some((u) => u.endsWith('/auth/token/refresh/'))).toBe(true);
+  });
+
+  it('login skips /anonymous/migrate/ when no device_id is in localStorage', async () => {
+    // localStorage is cleared in beforeEach — no popcornguess_device_id key.
+    setupFetch((call) => {
+      if (call.url.endsWith('/auth/login/')) {
+        return jsonResponse(200, {});
+      }
+      if (call.url.endsWith('/auth/user/')) {
+        return jsonResponse(200, {
+          id: 2,
+          username: 'noanon',
+          email: 'n@b.com',
+        });
+      }
+      return jsonResponse(404, {});
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('loading')).toHaveTextContent('ready')
+    );
+    await act(async () => {
+      screen.getByText('login').click();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('email')).toHaveTextContent('n@b.com')
+    );
+    const migrateCall = fetchCalls.find((c) =>
+      c.url.endsWith('/anonymous/migrate/')
+    );
+    expect(migrateCall).toBeUndefined();
+  });
+
+  it('silent refresh failure clears the user on mount', async () => {
+    setupFetch((call) => {
+      if (call.url.endsWith('/auth/user/')) {
+        return jsonResponse(401, { detail: 'expired' });
+      }
+      if (call.url.endsWith('/auth/token/refresh/')) {
+        return jsonResponse(401, { detail: 'refresh denied' });
+      }
+      return jsonResponse(404, {});
+    });
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('loading')).toHaveTextContent('ready')
+    );
+    expect(screen.getByTestId('auth')).toHaveTextContent('out');
+  });
+
+  it('register throws when /auth/registration/ fails', async () => {
+    setupFetch((call) => {
+      if (call.url.endsWith('/auth/registration/')) {
+        return jsonResponse(400, { detail: 'email exists' });
+      }
+      return jsonResponse(401, {});
+    });
+    let thrown: unknown = null;
+    function Caller(): React.JSX.Element {
+      const { register } = useAuth();
+      return (
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await register({
+                username: 'x',
+                email: 'x@y.com',
+                password: 'pwpwpwpw',
+                password_confirm: 'pwpwpwpw',
+              });
+            } catch (e) {
+              thrown = e;
+            }
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <Caller />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(fetchCalls.length).toBeGreaterThan(0));
+    await act(async () => {
+      screen.getByText('go').click();
+    });
+    await waitFor(() => expect(thrown).not.toBeNull());
+    expect((thrown as Error).message).toBe('email exists');
+  });
+
+  it('useAuth throws when used outside AuthProvider', () => {
+    function Bare(): React.JSX.Element {
+      useAuth();
+      return <div />;
+    }
+    const consoleErrSpy = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    expect(() => render(<Bare />)).toThrow(
+      /must be used within an AuthProvider/
+    );
+    consoleErrSpy.mockRestore();
+  });
+
+  it('login still succeeds when /anonymous/migrate/ throws (non-fatal)', async () => {
+    window.localStorage.setItem('popcornguess_device_id', 'dev-x');
+    setupFetch((call) => {
+      if (call.url.endsWith('/auth/login/')) {
+        return jsonResponse(200, {});
+      }
+      if (call.url.endsWith('/auth/user/')) {
+        return jsonResponse(200, {
+          id: 1,
+          username: 'u',
+          email: 'a@b.com',
+        });
+      }
+      if (call.url.endsWith('/anonymous/migrate/')) {
+        // Reject the underlying fetch — migrateAnonymous catches and ignores.
+        return Promise.reject(new Error('network down'));
+      }
+      return jsonResponse(404, {});
+    });
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('loading')).toHaveTextContent('ready')
+    );
+    await act(async () => {
+      screen.getByText('login').click();
+    });
+    // Login still completed; user is set despite migrate failing.
+    await waitFor(() =>
+      expect(screen.getByTestId('email')).toHaveTextContent('a@b.com')
+    );
+  });
+
+  it('parseError catches body.json() throwing and falls back to HTTP <status>', async () => {
+    fetchCalls = [];
+    fetchMock = jest.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      fetchCalls.push({ url: u, init: undefined });
+      if (u.endsWith('/auth/login/')) {
+        return {
+          ok: false,
+          status: 502,
+          json: () => Promise.reject(new Error('not json')),
+        } as unknown as Response;
+      }
+      return {
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({}),
+      } as unknown as Response;
+    });
+    (global as unknown as { fetch: typeof fetch }).fetch =
+      fetchMock as unknown as typeof fetch;
+
+    let thrown: unknown = null;
+    function Caller(): React.JSX.Element {
+      const { login } = useAuth();
+      return (
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await login('a@b.com', 'pw');
+            } catch (e) {
+              thrown = e;
+            }
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <Caller />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(fetchCalls.length).toBeGreaterThan(0));
+    await act(async () => {
+      screen.getByText('go').click();
+    });
+    await waitFor(() => expect(thrown).not.toBeNull());
+    expect((thrown as Error).message).toBe('HTTP 502');
+  });
+
+  it('parseError handles non-object body and falls back to HTTP <status>', async () => {
+    setupFetch(() => ({
+      ok: false,
+      status: 418,
+      json: () => Promise.resolve('plain string body'),
+    } as unknown as Response));
+    let thrown: unknown = null;
+    function Caller(): React.JSX.Element {
+      const { login } = useAuth();
+      return (
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await login('a@b.com', 'pw');
+            } catch (e) {
+              thrown = e;
+            }
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <Caller />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(fetchCalls.length).toBeGreaterThan(0));
+    await act(async () => {
+      screen.getByText('go').click();
+    });
+    await waitFor(() => expect(thrown).not.toBeNull());
+    expect((thrown as Error).message).toBe('HTTP 418');
+  });
+
+  it('parseError falls back to HTTP <status> when body has no detail and no field arrays', async () => {
+    setupFetch(() => jsonResponse(503, {}));
+    let thrown: unknown = null;
+    function Caller(): React.JSX.Element {
+      const { login } = useAuth();
+      return (
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await login('a@b.com', 'pw');
+            } catch (e) {
+              thrown = e;
+            }
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <Caller />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(fetchCalls.length).toBeGreaterThan(0));
+    await act(async () => {
+      screen.getByText('go').click();
+    });
+    await waitFor(() => expect(thrown).not.toBeNull());
+    expect((thrown as Error).message).toBe('HTTP 503');
+  });
+
   it('parses field errors when no detail is present', async () => {
     setupFetch(() =>
       jsonResponse(400, { email: ['Invalid email.'], password: ['Too short.'] })

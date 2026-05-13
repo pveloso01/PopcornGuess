@@ -19,7 +19,10 @@ from typing import Any, Iterable, Iterator
 
 import httpx
 
+from . import circuit
+
 TMDB_BASE = "https://api.themoviedb.org/3"
+_BACKOFFS = (1.0, 2.0, 4.0)
 
 
 class TMDbError(RuntimeError):
@@ -60,34 +63,28 @@ def _params(extra: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def _request(client: httpx.Client, path: str, params: dict[str, Any]) -> dict[str, Any]:
-    """GET with one retry on 429/5xx."""
-    for attempt in range(2):
+    """GET with 3 retries on 429/5xx using exponential backoff."""
+    last_status: int | None = None
+    for attempt in range(3):
         response = client.get(path, params=params)
-        if response.status_code in (429, 500, 502, 503, 504) and attempt == 0:
-            retry_after = float(response.headers.get("retry-after", "1"))
-            time.sleep(min(retry_after, 5))
+        if response.status_code in (429, 500, 502, 503, 504):
+            retry_after = float(response.headers.get("retry-after", _BACKOFFS[attempt]))
+            time.sleep(min(retry_after, 10.0))
+            last_status = response.status_code
             continue
         if response.status_code >= 400:
             raise TMDbError(
                 f"TMDb {response.status_code} for {path}: {response.text[:200]}"
             )
         return response.json()
-    raise TMDbError(f"TMDb retries exhausted for {path}")
+    raise TMDbError(f"TMDb retries exhausted for {path} (last={last_status})")
 
 
-def iter_popular_titles(
-    *,
-    pages: int = 5,
-    kind: str = "movie",
-) -> Iterator[TitleRecord]:
-    """
-    Stream the top `pages * 20` popular movie/tv titles.
-
-    Used by `manage.py import_titles` to seed the autocomplete pool.
-    """
+def _iter_popular_titles_impl(pages: int, kind: str) -> list[TitleRecord]:
     if kind not in {"movie", "tv"}:
         raise TMDbError(f"Unsupported kind: {kind!r}")
 
+    records: list[TitleRecord] = []
     with _client() as client:
         for page in range(1, pages + 1):
             data = _request(
@@ -96,11 +93,24 @@ def iter_popular_titles(
                 _params({"page": page, "language": "en-US"}),
             )
             for entry in data.get("results", []):
-                yield _to_record(entry, kind)
+                records.append(_to_record(entry, kind))
+    return records
 
 
-def fetch_overview(tmdb_id: int, kind: str = "movie") -> str:
-    """Return the canonical English overview text for a single title."""
+def iter_popular_titles(
+    *,
+    pages: int = 5,
+    kind: str = "movie",
+) -> Iterator[TitleRecord]:
+    """
+    Stream the top `pages * 20` popular movie/tv titles. Guarded by the
+    'tmdb' circuit breaker so persistent upstream failures fast-fail.
+    """
+    records = circuit.call("tmdb", _iter_popular_titles_impl, pages, kind)
+    yield from records
+
+
+def _fetch_overview_impl(tmdb_id: int, kind: str) -> str:
     if kind not in {"movie", "tv"}:
         raise TMDbError(f"Unsupported kind: {kind!r}")
     with _client() as client:
@@ -110,10 +120,12 @@ def fetch_overview(tmdb_id: int, kind: str = "movie") -> str:
     return str(data.get("overview", "")).strip()
 
 
-def fetch_alternative_titles(
-    tmdb_id: int, kind: str = "movie"
-) -> tuple[str, ...]:
-    """Return alternate titles a player might type (US/UK/etc.)."""
+def fetch_overview(tmdb_id: int, kind: str = "movie") -> str:
+    """Return the canonical English overview text for a single title."""
+    return circuit.call("tmdb", _fetch_overview_impl, tmdb_id, kind)
+
+
+def _fetch_alternative_titles_impl(tmdb_id: int, kind: str) -> tuple[str, ...]:
     with _client() as client:
         data = _request(
             client, f"/{kind}/{tmdb_id}/alternative_titles", _params()
@@ -124,6 +136,13 @@ def fetch_alternative_titles(
         for item in items
         if item.get("title")
     )
+
+
+def fetch_alternative_titles(
+    tmdb_id: int, kind: str = "movie"
+) -> tuple[str, ...]:
+    """Return alternate titles a player might type (US/UK/etc.)."""
+    return circuit.call("tmdb", _fetch_alternative_titles_impl, tmdb_id, kind)
 
 
 def _to_record(entry: dict[str, Any], kind: str) -> TitleRecord:

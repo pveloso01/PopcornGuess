@@ -23,7 +23,11 @@ import httpx
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
+from . import circuit
+
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+PROMPT_VERSION = "v1"
+_BACKOFFS = (1.0, 2.0, 4.0)
 
 
 class GeminiError(RuntimeError):
@@ -62,6 +66,7 @@ _VALIDATOR = Draft202012Validator(PUZZLE_SCHEMA)
 class LadderPuzzle:
     rungs: list[str]
     aliases: list[str]
+    prompt_version: str = PROMPT_VERSION
 
 
 def _api_key() -> str:
@@ -73,6 +78,11 @@ def _api_key() -> str:
 
 def _model_name() -> str:
     return os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+
+def model_name() -> str:
+    """Public accessor for the currently configured Gemini model id."""
+    return _model_name()
 
 
 def build_prompt(*, title: str, year: int | None, synopsis: str, kind: str) -> str:
@@ -99,8 +109,8 @@ def build_prompt(*, title: str, year: int | None, synopsis: str, kind: str) -> s
     )
 
 
-def _request(prompt: str) -> str:
-    """Call Gemini and return the raw text response."""
+def _request_impl(prompt: str) -> tuple[str, dict[str, Any]]:
+    """Call Gemini and return (text, full raw response dict)."""
     url = f"{GEMINI_BASE}/models/{_model_name()}:generateContent?key={_api_key()}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -124,12 +134,14 @@ def _request(prompt: str) -> str:
         ],
     }
 
+    last_status: int | None = None
     with httpx.Client(timeout=httpx.Timeout(30.0)) as client:
-        for attempt in range(2):
+        for attempt in range(3):
             response = client.post(url, json=payload)
-            if response.status_code in (429, 500, 502, 503, 504) and attempt == 0:
-                retry_after = float(response.headers.get("retry-after", "2"))
-                time.sleep(min(retry_after, 8))
+            if response.status_code in (429, 500, 502, 503, 504):
+                retry_after = float(response.headers.get("retry-after", _BACKOFFS[attempt]))
+                time.sleep(min(retry_after, 10.0))
+                last_status = response.status_code
                 continue
             if response.status_code >= 400:
                 raise GeminiError(
@@ -137,10 +149,16 @@ def _request(prompt: str) -> str:
                 )
             data = response.json()
             try:
-                return data["candidates"][0]["content"]["parts"][0]["text"]
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
             except (KeyError, IndexError) as exc:
                 raise GeminiError(f"Gemini returned no candidate: {data}") from exc
-    raise GeminiError("Gemini retries exhausted")
+            return text, data
+    raise GeminiError(f"Gemini retries exhausted (last={last_status})")
+
+
+def _request(prompt: str) -> tuple[str, dict[str, Any]]:
+    """Circuit-guarded entry point."""
+    return circuit.call("gemini", _request_impl, prompt)
 
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*(.+?)\s*```\s*$", re.DOTALL)
@@ -153,19 +171,24 @@ def _strip_code_fence(text: str) -> str:
 
 def generate_ladder(
     *, title: str, year: int | None, synopsis: str, kind: str = "movie"
-) -> LadderPuzzle:
+) -> tuple[LadderPuzzle, dict[str, Any]]:
     """
-    Generate, validate, and return a LadderPuzzle. Raises GeminiError if
-    the model's response is malformed or the answer leaks into the rungs.
+    Generate, validate, and return (LadderPuzzle, raw_response_dict). The
+    second element is the full parsed JSON body Gemini returned (before
+    schema validation of the inner content) — persisted for auditing.
+
+    Raises GeminiError if the response is malformed or the answer leaks.
     """
     if not synopsis or len(synopsis) < 30:
         raise GeminiError(f"Synopsis too short for {title!r}; aborting generation.")
 
-    raw = _request(build_prompt(title=title, year=year, synopsis=synopsis, kind=kind))
+    raw_text, raw_response = _request(
+        build_prompt(title=title, year=year, synopsis=synopsis, kind=kind)
+    )
     try:
-        parsed = json.loads(_strip_code_fence(raw))
+        parsed = json.loads(_strip_code_fence(raw_text))
     except json.JSONDecodeError as exc:
-        raise GeminiError(f"Gemini returned invalid JSON: {raw[:300]}") from exc
+        raise GeminiError(f"Gemini returned invalid JSON: {raw_text[:300]}") from exc
 
     try:
         _VALIDATOR.validate(parsed)
@@ -185,7 +208,19 @@ def generate_ladder(
     if not any(a.lower().strip() == title.lower().strip() for a in aliases):
         aliases.append(title)
 
-    return LadderPuzzle(rungs=list(rungs), aliases=list(aliases))
+    ladder = LadderPuzzle(
+        rungs=list(rungs),
+        aliases=list(aliases),
+        prompt_version=PROMPT_VERSION,
+    )
+    return ladder, raw_response
 
 
-__all__ = ["GeminiError", "LadderPuzzle", "PUZZLE_SCHEMA", "build_prompt", "generate_ladder"]
+__all__ = [
+    "GeminiError",
+    "LadderPuzzle",
+    "PROMPT_VERSION",
+    "PUZZLE_SCHEMA",
+    "build_prompt",
+    "generate_ladder",
+]

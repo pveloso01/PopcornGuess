@@ -101,4 +101,137 @@ describe('useQuizSession', () => {
     expect(result.current.session?.isCompleted).toBe(true);
     expect(completeMock).toHaveBeenCalled();
   });
+
+  it('startSession catches API rejection and leaves session null', async () => {
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    startMock.mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.startSession(42, QUESTIONS, 'device-1');
+    });
+    expect(result.current.session).toBeNull();
+    expect(result.current.error?.message).toBe('boom');
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it('wraps a non-Error rejection in a fresh Error on startSession', async () => {
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    startMock.mockRejectedValue('non-error-string');
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.startSession(42, QUESTIONS);
+    });
+    expect(result.current.error?.message).toBe('Failed to start session');
+    errSpy.mockRestore();
+  });
+
+  it('wraps a non-Error rejection on submitAnswer', async () => {
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    startMock.mockResolvedValue({ id: 1 });
+    submitMock.mockRejectedValue('boom-string');
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.startSession(1, QUESTIONS);
+    });
+    await act(async () => {
+      await result.current.submitAnswer(1, 'x', true, 1);
+    });
+    expect(result.current.error?.message).toBe('Failed to submit answer');
+    errSpy.mockRestore();
+  });
+
+  it('wraps a non-Error rejection on completeSession', async () => {
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    startMock.mockResolvedValue({ id: 1 });
+    completeMock.mockRejectedValue('boom-string');
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.startSession(1, QUESTIONS);
+    });
+    await act(async () => {
+      await result.current.completeSession();
+    });
+    expect(result.current.error?.message).toBe('Failed to complete session');
+    errSpy.mockRestore();
+  });
+
+  it('submitAnswer records error when api.progress.submit rejects', async () => {
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    startMock.mockResolvedValue({ id: 99 });
+    submitMock.mockRejectedValue(new Error('submit-fail'));
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.startSession(42, QUESTIONS);
+    });
+    await act(async () => {
+      await result.current.submitAnswer(1, 'foo', true, 1);
+    });
+    // Answer is NOT applied to session.answers because the submit threw
+    // before the local state update. We just need the error path covered.
+    expect(result.current.error?.message).toBe('submit-fail');
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it('completeSession is a no-op when no session has been started', async () => {
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.completeSession('device-x');
+    });
+    expect(completeMock).not.toHaveBeenCalled();
+    expect(result.current.session).toBeNull();
+  });
+
+  it('completeSession catches API rejection and surfaces error', async () => {
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    startMock.mockResolvedValue({ id: 99 });
+    completeMock.mockRejectedValue(new Error('complete-fail'));
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.startSession(42, QUESTIONS);
+    });
+    await act(async () => {
+      await result.current.completeSession();
+    });
+    expect(result.current.error?.message).toBe('complete-fail');
+    errSpy.mockRestore();
+  });
+
+  it('submitAnswer is a no-op when no session has been started', async () => {
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.submitAnswer(1, 'foo', true, 1);
+    });
+    expect(submitMock).not.toHaveBeenCalled();
+  });
+
+  it('nextQuestion is a no-op when no session', () => {
+    const { result } = renderHook(() => useQuizSession());
+    act(() => {
+      result.current.nextQuestion();
+    });
+    expect(result.current.session).toBeNull();
+  });
+
+  it('getCurrentQuestion returns null when no session is started', () => {
+    const { result } = renderHook(() => useQuizSession());
+    expect(result.current.getCurrentQuestion()).toBeNull();
+  });
+
+  it('getCurrentQuestion returns null past the last index', async () => {
+    startMock.mockResolvedValue({ id: 99 });
+    const { result } = renderHook(() => useQuizSession());
+    await act(async () => {
+      await result.current.startSession(42, QUESTIONS);
+    });
+    act(() => {
+      result.current.nextQuestion();
+    });
+    act(() => {
+      result.current.nextQuestion();
+    });
+    // Index now 2, length 2 → null.
+    expect(result.current.getCurrentQuestion()).toBeNull();
+  });
 });

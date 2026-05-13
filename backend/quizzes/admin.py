@@ -2,9 +2,14 @@
 Admin configuration for Quiz models.
 """
 
-from django.contrib import admin
+import logging
+
+from django.contrib import admin, messages
+from django.core.management import call_command
 
 from .models import Category, DailyPuzzle, Question, Quiz, QuizQuestion
+
+logger = logging.getLogger(__name__)
 
 
 @admin.register(Category)
@@ -247,8 +252,45 @@ class DailyPuzzleAdmin(admin.ModelAdmin):
         "created_at",
     ]
     date_hierarchy = "date"
+    actions = ["regenerate_puzzle"]
 
     @admin.display(description="Completion Rate")
     def completion_rate_display(self, obj: DailyPuzzle) -> str:
         """Return formatted completion rate."""
         return f"{obj.completion_rate:.1f}%"
+
+    @admin.action(description="Regenerate selected daily puzzles")
+    def regenerate_puzzle(self, request, queryset):  # type: ignore[no-untyped-def]
+        """
+        Delete selected DailyPuzzle rows and rerun the generator for each
+        date. Useful when a puzzle is judged low-quality post-hoc.
+        """
+        dates = list(queryset.values_list("date", flat=True))
+        deleted_quiz_ids = list(queryset.values_list("quiz_id", flat=True))
+
+        # Delete the daily rows + their backing Quiz objects so the
+        # generator can recreate them cleanly.
+        queryset.delete()
+        Quiz.objects.filter(id__in=deleted_quiz_ids).delete()
+
+        regenerated = 0
+        for target in dates:
+            try:
+                call_command(
+                    "generate_daily_puzzle", "--date", target.isoformat()
+                )
+                regenerated += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("regenerate failed for %s", target)
+                self.message_user(
+                    request,
+                    f"Regenerate failed for {target}: {exc}",
+                    level=messages.ERROR,
+                )
+
+        if regenerated:
+            self.message_user(
+                request,
+                f"Regenerated {regenerated} daily puzzle(s).",
+                level=messages.SUCCESS,
+            )

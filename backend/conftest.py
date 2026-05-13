@@ -13,7 +13,20 @@ from typing import Any, Callable
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
+
+
+@pytest.fixture(autouse=True)
+def _clear_drf_throttle_cache() -> None:
+    """Reset DRF throttle counters between tests.
+
+    DRF's rate throttles store counters in the default cache (LocMemCache
+    in test settings), and that cache survives test isolation. Without
+    this fixture, the 60/min anon and 30/min submit/autocomplete rates
+    cascade into 429s once the suite grows past those thresholds.
+    """
+    cache.clear()
 
 from analytics.models import AnonymousUser, Streak, UserStats
 from quizzes.models import (

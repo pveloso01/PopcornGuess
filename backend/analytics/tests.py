@@ -19,7 +19,7 @@ from django.contrib.auth import get_user_model
 from freezegun import freeze_time
 from rest_framework.test import APIClient
 
-from .models import AnonymousUser, Streak, UserProgress, UserStats
+from .models import AnonymousUser, DailyQuizStats, Streak, UserProgress, UserStats
 
 User = get_user_model()
 
@@ -403,3 +403,388 @@ class TestMigrateAnonymousToUser:
             self.URL, {"device_id": str(anon.device_id)}, format="json"
         )
         assert second.status_code == 404
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Model __str__, computed properties, and edge cases.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestAnonymousUserModel:
+    def test_str_without_user(self, make_anon) -> None:
+        """AnonymousUser.__str__ falls back to truncated device id."""
+        anon = make_anon()
+        assert str(anon).startswith("Anonymous: ")
+
+    def test_str_with_linked_user(self, make_anon, make_user) -> None:
+        """AnonymousUser.__str__ uses linked user when set."""
+        user = make_user(username="zelda")
+        anon = make_anon()
+        anon.user = user
+        anon.save()
+        assert str(anon) == "Device for zelda"
+
+    def test_migrate_to_user_sets_link(self, make_anon, make_user) -> None:
+        """migrate_to_user persists the FK to the registered user."""
+        anon = make_anon()
+        user = make_user()
+        anon.migrate_to_user(user)
+        anon.refresh_from_db()
+        assert anon.user_id == user.id
+
+
+@pytest.mark.django_db
+class TestUserProgressModel:
+    def test_str_with_user(self, make_user, make_quiz) -> None:
+        """UserProgress.__str__ embeds the user identifier."""
+        user = make_user(username="mario")
+        quiz = make_quiz()
+        progress = UserProgress.objects.create(
+            user=user, quiz=quiz, total_questions=1
+        )
+        assert "mario" in str(progress)
+
+    def test_percentage_score_zero_when_no_questions(
+        self, make_user, make_quiz
+    ) -> None:
+        """percentage_score short-circuits to 0.0 when total_questions is 0."""
+        user = make_user()
+        quiz = make_quiz()
+        progress = UserProgress.objects.create(
+            user=user, quiz=quiz, total_questions=0, score=0
+        )
+        assert progress.percentage_score == 0.0
+
+    def test_is_perfect_score_requires_non_zero_total(
+        self, make_user, make_quiz
+    ) -> None:
+        """is_perfect_score is False for a 0/0 record."""
+        user = make_user()
+        quiz = make_quiz()
+        progress = UserProgress.objects.create(
+            user=user, quiz=quiz, total_questions=0, score=0
+        )
+        assert progress.is_perfect_score is False
+
+
+@pytest.mark.django_db
+class TestStreakStrAndMilestones:
+    def test_str_with_user(self, make_user) -> None:
+        """Streak.__str__ includes username and current_streak."""
+        user = make_user(username="luigi")
+        streak = Streak.objects.create(user=user, current_streak=4)
+        s = str(streak)
+        assert "luigi" in s
+        assert "4 day streak" in s
+
+    def test_milestone_at_30_days_grants_2_freezes(self, make_user) -> None:
+        """A 30-day streak awards 2 streak freezes via _check_and_award_milestone."""
+        user = make_user()
+        streak = Streak.objects.create(user=user, current_streak=29)
+        with freeze_time("2026-05-01"):
+            streak.last_played_date = dt.date(2026, 4, 30)
+            streak.save()
+            streak.update_streak()
+        streak.refresh_from_db()
+        assert streak.current_streak == 30
+        assert streak.streak_freezes_earned >= 2
+
+    def test_milestone_at_100_days_grants_3_freezes(self, make_user) -> None:
+        """A 100-day streak awards 3 streak freezes."""
+        user = make_user()
+        streak = Streak.objects.create(user=user, current_streak=99)
+        with freeze_time("2026-05-01"):
+            streak.last_played_date = dt.date(2026, 4, 30)
+            streak.save()
+            streak.update_streak()
+        streak.refresh_from_db()
+        assert streak.current_streak == 100
+        assert streak.streak_freezes_earned >= 3
+
+
+@pytest.mark.django_db
+class TestUserStatsModel:
+    def test_str_with_user(self, make_user) -> None:
+        """UserStats.__str__ embeds identifier."""
+        user = make_user(username="peach")
+        stats = UserStats.objects.create(user=user)
+        assert "peach" in str(stats)
+
+    def test_accuracy_zero_when_no_questions(self, make_user) -> None:
+        """accuracy returns 0.0 when total_questions_answered is 0."""
+        user = make_user()
+        stats = UserStats.objects.create(user=user)
+        assert stats.accuracy == 0.0
+
+    def test_accuracy_calculation(self, make_user) -> None:
+        """accuracy is correct / answered * 100."""
+        user = make_user()
+        stats = UserStats.objects.create(
+            user=user,
+            total_questions_answered=10,
+            total_correct_answers=4,
+        )
+        assert stats.accuracy == 40.0
+
+    def test_update_from_progress_perfect_and_time(
+        self, make_user, make_quiz
+    ) -> None:
+        """update_from_progress increments perfect_scores, best_score and time."""
+        user = make_user()
+        quiz = make_quiz()
+        progress = UserProgress.objects.create(
+            user=user,
+            quiz=quiz,
+            total_questions=5,
+            score=5,
+            time_taken_seconds=30,
+            is_completed=True,
+        )
+        stats = UserStats.objects.create(user=user)
+        stats.update_from_progress(progress)
+        stats.refresh_from_db()
+        assert stats.total_quizzes_completed == 1
+        assert stats.perfect_scores == 1
+        assert stats.best_score == 5
+        assert stats.fastest_completion_seconds == 30
+        assert stats.average_score == 5.0
+
+    def test_update_from_progress_faster_completion_replaces(
+        self, make_user, make_quiz
+    ) -> None:
+        """A faster completion overwrites fastest_completion_seconds."""
+        user = make_user()
+        quiz = make_quiz()
+        stats = UserStats.objects.create(
+            user=user, fastest_completion_seconds=60
+        )
+        progress = UserProgress.objects.create(
+            user=user,
+            quiz=quiz,
+            total_questions=3,
+            score=3,
+            time_taken_seconds=20,
+            is_completed=True,
+        )
+        stats.update_from_progress(progress)
+        stats.refresh_from_db()
+        assert stats.fastest_completion_seconds == 20
+
+    def test_update_from_progress_slower_does_not_replace(
+        self, make_user, make_quiz
+    ) -> None:
+        """A slower completion does not overwrite fastest_completion_seconds."""
+        user = make_user()
+        quiz = make_quiz()
+        stats = UserStats.objects.create(
+            user=user, fastest_completion_seconds=10
+        )
+        progress = UserProgress.objects.create(
+            user=user,
+            quiz=quiz,
+            total_questions=3,
+            score=2,
+            time_taken_seconds=99,
+            is_completed=True,
+        )
+        stats.update_from_progress(progress)
+        stats.refresh_from_db()
+        assert stats.fastest_completion_seconds == 10
+
+    def test_update_from_progress_not_completed_increments_only_played(
+        self, make_user, make_quiz
+    ) -> None:
+        """update_from_progress on a non-completed run only bumps total_played."""
+        user = make_user()
+        quiz = make_quiz()
+        progress = UserProgress.objects.create(
+            user=user, quiz=quiz, total_questions=5, score=0, is_completed=False
+        )
+        stats = UserStats.objects.create(user=user)
+        stats.update_from_progress(progress)
+        stats.refresh_from_db()
+        assert stats.total_quizzes_played == 1
+        assert stats.total_quizzes_completed == 0
+        assert stats.total_score == 0
+
+
+@pytest.mark.django_db
+class TestDailyQuizStatsModel:
+    def test_str_includes_quiz_and_date(self, make_quiz) -> None:
+        """DailyQuizStats.__str__ embeds quiz and date."""
+        quiz = make_quiz()
+        dqs = DailyQuizStats.objects.create(quiz=quiz, date=quiz.publish_date)
+        assert str(quiz) in str(dqs)
+
+    def test_completion_rate_zero_when_no_attempts(self, make_quiz) -> None:
+        """completion_rate is 0.0 when total_attempts is 0."""
+        quiz = make_quiz()
+        dqs = DailyQuizStats.objects.create(quiz=quiz, date=quiz.publish_date)
+        assert dqs.completion_rate == 0.0
+
+    def test_record_attempt_increments(self, make_quiz) -> None:
+        """record_attempt persists an incremented total_attempts."""
+        quiz = make_quiz()
+        dqs = DailyQuizStats.objects.create(quiz=quiz, date=quiz.publish_date)
+        dqs.record_attempt()
+        dqs.refresh_from_db()
+        assert dqs.total_attempts == 1
+
+    def test_record_completion_updates_average(self, make_quiz) -> None:
+        """record_completion increments completions and recomputes average."""
+        quiz = make_quiz()
+        dqs = DailyQuizStats.objects.create(quiz=quiz, date=quiz.publish_date)
+        dqs.record_completion(score=8)
+        dqs.record_completion(score=2)
+        dqs.refresh_from_db()
+        assert dqs.total_completions == 2
+        assert dqs.total_score == 10
+        assert dqs.average_score == 5.0
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Extra view-edge coverage.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestStreakViewEdges:
+    def test_get_current_streak_unknown_device_404(self) -> None:
+        """GET /streaks/current/ with an unregistered device id returns 404."""
+        response = APIClient().get(
+            "/api/v1/streaks/current/",
+            HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
+        )
+        assert response.status_code == 404
+
+    def test_update_streak_authenticated(self, make_user) -> None:
+        """update_streak for a logged-in user returns the user's streak."""
+        user = make_user()
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post("/api/v1/streaks/update/", {}, format="json")
+        assert response.status_code == 200
+        assert response.data["current_streak"] == 1
+
+    def test_update_streak_missing_device_400(self) -> None:
+        """update_streak without auth and without device header is 400."""
+        response = APIClient().post("/api/v1/streaks/update/", {}, format="json")
+        assert response.status_code == 400
+
+    def test_update_streak_unknown_device_404(self) -> None:
+        """update_streak with an unknown device id is 404."""
+        response = APIClient().post(
+            "/api/v1/streaks/update/",
+            {},
+            format="json",
+            HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
+        )
+        assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestStatsViewEdges:
+    def test_unknown_device_404(self) -> None:
+        """GET /stats/me/ with an unknown device id is 404."""
+        response = APIClient().get(
+            "/api/v1/stats/me/",
+            HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
+        )
+        assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestProgressLifecycleEdges:
+    def test_start_authenticated_user(self, make_user, make_quiz) -> None:
+        """start_quiz_session for an authenticated user records user FK."""
+        user = make_user()
+        quiz = make_quiz()
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post(
+            "/api/v1/progress/start/", {"quiz_id": quiz.id}, format="json"
+        )
+        assert response.status_code == 201
+        progress = UserProgress.objects.get(id=response.data["id"])
+        assert progress.user_id == user.id
+        assert progress.anonymous_user_id is None
+
+    def test_start_anonymous_missing_device_400(self, make_quiz) -> None:
+        """start_quiz_session for anon without device returns 400."""
+        quiz = make_quiz()
+        response = APIClient().post(
+            "/api/v1/progress/start/", {"quiz_id": quiz.id}, format="json"
+        )
+        assert response.status_code == 400
+
+    def test_start_unknown_anonymous_device_404(self, make_quiz) -> None:
+        """start_quiz_session for anon with unknown device returns 404."""
+        quiz = make_quiz()
+        response = APIClient().post(
+            "/api/v1/progress/start/",
+            {"quiz_id": quiz.id},
+            format="json",
+            HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
+        )
+        assert response.status_code == 404
+
+    def test_submit_missing_progress_id_400(self) -> None:
+        """submit_quiz_progress without progress_id returns 400."""
+        response = APIClient().post(
+            "/api/v1/progress/submit/", {}, format="json"
+        )
+        assert response.status_code == 400
+
+    def test_complete_missing_progress_id_400(self) -> None:
+        """complete_quiz_session without progress_id returns 400."""
+        response = APIClient().post(
+            "/api/v1/progress/complete/", {}, format="json"
+        )
+        assert response.status_code == 400
+
+    def test_complete_unknown_progress_404(self) -> None:
+        """complete_quiz_session with unknown progress_id returns 404."""
+        response = APIClient().post(
+            "/api/v1/progress/complete/",
+            {"progress_id": 99_999_999},
+            format="json",
+        )
+        assert response.status_code == 404
+
+    def test_complete_authenticated_user_updates_stats(
+        self, make_user, make_quiz
+    ) -> None:
+        """complete_quiz_session for a logged-in user updates UserStats."""
+        user = make_user()
+        quiz = make_quiz()
+        progress = UserProgress.objects.create(
+            user=user, quiz=quiz, total_questions=3, score=3
+        )
+        response = APIClient().post(
+            "/api/v1/progress/complete/",
+            {"progress_id": progress.id},
+            format="json",
+        )
+        assert response.status_code == 200
+        stats = UserStats.objects.get(user=user)
+        assert stats.total_quizzes_played == 1
+
+    def test_complete_without_time_taken_skips_time_branch(
+        self, make_anon, make_quiz
+    ) -> None:
+        """complete_quiz_session without time_taken_seconds still finalises."""
+        anon = make_anon()
+        quiz = make_quiz()
+        progress = UserProgress.objects.create(
+            anonymous_user=anon, quiz=quiz, total_questions=2, score=1
+        )
+        response = APIClient().post(
+            "/api/v1/progress/complete/",
+            {"progress_id": progress.id},
+            format="json",
+        )
+        assert response.status_code == 200
+        progress.refresh_from_db()
+        assert progress.is_completed is True
+        assert progress.time_taken_seconds is None
