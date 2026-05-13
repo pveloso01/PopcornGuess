@@ -40,7 +40,31 @@ interface AuthContextType {
   refresh: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// A non-undefined default lets useContext succeed during Next 16's
+// static prerender of /_global-error (an undefined default causes
+// "Cannot read properties of null (reading 'useContext')" because Next
+// inlines the layout's client chunk during error-boundary prerender).
+// The provider always overwrites this; consumers outside the provider
+// hit the explicit throw below.
+const AUTH_NOT_READY: AuthContextType = {
+  user: null,
+  isLoading: true,
+  isAuthenticated: false,
+  login: async () => {
+    throw new Error('AuthProvider not mounted');
+  },
+  logout: async () => {
+    throw new Error('AuthProvider not mounted');
+  },
+  register: async () => {
+    throw new Error('AuthProvider not mounted');
+  },
+  refresh: async () => {
+    throw new Error('AuthProvider not mounted');
+  },
+};
+
+const AuthContext = createContext<AuthContextType>(AUTH_NOT_READY);
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
@@ -207,7 +231,7 @@ export function AuthProvider({
 
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
-  if (ctx === undefined) {
+  if (ctx === AUTH_NOT_READY) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return ctx;

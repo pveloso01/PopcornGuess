@@ -1,9 +1,16 @@
 import RootLayout, { metadata, viewport } from './layout';
 
-jest.mock('next/font/google', () => ({
-  Geist: () => ({ variable: '--font-geist-sans', subsets: ['latin'] }),
-  Geist_Mono: () => ({ variable: '--font-geist-mono', subsets: ['latin'] }),
-}));
+// next/font/google is no longer used — fonts are system-stack via CSS
+// variables defined in globals.css. The mock is preserved as a no-op in
+// case anyone re-introduces a Google Font import.
+jest.mock(
+  'next/font/google',
+  () => ({
+    Geist: () => ({ variable: '--font-geist-sans', subsets: ['latin'] }),
+    Geist_Mono: () => ({ variable: '--font-geist-mono', subsets: ['latin'] }),
+  }),
+  { virtual: true }
+);
 
 jest.mock('./globals.css', () => ({}));
 

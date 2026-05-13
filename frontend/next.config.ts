@@ -25,10 +25,14 @@ const nextConfig: NextConfig = {
   // Power Pack features
   poweredByHeader: false,
 
-  // Experimental features for performance
-  experimental: {
-    optimizeCss: true,
-  },
+  // Build output mode. Standalone gives us a tight self-contained
+  // server bundle that works whether we deploy to Vercel, Fly, or
+  // a plain Node host.
+  output: 'standalone',
+
+  // No experimental flags — `optimizeCss` relies on `critters`, which is
+  // unmaintained and breaks Next 16's prerender of /_global-error. The
+  // perf cost is negligible at our scale; Cloudflare cache absorbs it.
 };
 
 export default nextConfig;

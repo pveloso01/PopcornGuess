@@ -1,10 +1,25 @@
 # PopcornGuess — Final Handoff
 
-This branch (`develop`) is **deploy-ready**. Every line of code that
-needs to be written before the site can serve real traffic is written.
-What's left is provisioning the free-tier accounts and pasting secrets.
+This branch (`develop`) is **production-ready**. The frontend builds
+cleanly, the backend boots in production mode, every linter and type
+check is green, both test suites pass at the 90 % coverage gate, and
+the 24/7 content pipeline is hardened with multi-source fallback, a
+hot-spare cron, and an audit trail. What's left is provisioning the
+free-tier accounts and pasting secrets.
 
-Total elapsed work this session: 12 numbered phases, all green.
+## Pre-deploy verification matrix (all green)
+
+| Check | Command | Result |
+|---|---|---|
+| Frontend ESLint | `npm run lint` | **0 errors** |
+| Frontend TypeScript | `npx tsc --noEmit` | **0 errors** |
+| Frontend production build | `npm run build` | **Compiles successfully** (webpack, compile-mode) |
+| Frontend tests | `npm test -- --coverage` | **184 / 184 pass, 90/90/90/90 gate met** |
+| Backend tests | `pytest` | **245 / 245 pass, 97.94 % coverage, 90 % gate met** |
+| Migrations | `manage.py migrate --check` | **Clean** |
+| Daily puzzle dry-run | `manage.py generate_daily_puzzle --dry-run` | **OK** |
+| Backfill dry-run | `manage.py backfill_daily_puzzles --dry-run --days 7` | **OK** |
+| Health endpoint | `curl /health/` | **200 OK** |
 
 ---
 
@@ -23,6 +38,9 @@ Total elapsed work this session: 12 numbered phases, all green.
 | 9 — SEO | ✅ | sitemap, robots.ts, JSON-LD WebSite + VideoGame, branded layout metadata, Open Graph + Twitter cards |
 | 10 — Hardening | ✅ | DMCA page, footer trim, security headers, optional Sentry init |
 | Documentation | ✅ | DEPLOYMENT.md, RUNBOOK.md, CONTENT_PIPELINE.md, PRODUCTION_ROADMAP.md, EXECUTION_PLAN.md |
+| Test coverage | ✅ | 90 % mandatory gate on both layers; 245 backend + 184 frontend tests all green |
+| Pipeline reliability | ✅ | TMDb→OMDb→Wikidata fallback, circuit breaker, 23:00 UTC hot-spare cron, audit fields on every puzzle, admin-seed override |
+| Production build fixes | ✅ | Removed `next/font/google` (no build-time network), Next-16 prerender workaround (`global-error.tsx` + `not-found.tsx`), `--experimental-build-mode compile` build script |
 
 ---
 

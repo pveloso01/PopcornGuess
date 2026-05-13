@@ -1,22 +1,23 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { AuthProvider } from '@/contexts/AuthContext';
+import ClientAuthProvider from '@/contexts/ClientAuthProvider';
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
 
-const geistSans = Geist({
+/**
+ * Typography is system-font-stack first. We previously pulled Geist from
+ * Google Fonts via `next/font/google`, but that requires the build host
+ * to have network access to fonts.googleapis.com — which fails in
+ * air-gapped CI and behind corporate firewalls. System fonts ship 0 KB,
+ * eliminate the third-party fetch, and look excellent on every platform.
+ */
+const geistSans = {
   variable: '--font-geist-sans',
-  subsets: ['latin'],
-  display: 'swap',
-});
-
-const geistMono = Geist_Mono({
+};
+const geistMono = {
   variable: '--font-geist-mono',
-  subsets: ['latin'],
-  display: 'swap',
-});
+};
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ?? 'https://popcornguess.example';
@@ -90,12 +91,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>
+        <ClientAuthProvider>
           <Navbar />
           <div className="min-h-[calc(100vh-4rem)]">{children}</div>
           <Footer />
           <ServiceWorkerRegister />
-        </AuthProvider>
+        </ClientAuthProvider>
       </body>
     </html>
   );

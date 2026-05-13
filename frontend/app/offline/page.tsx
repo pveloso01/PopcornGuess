@@ -3,6 +3,8 @@
  * network. Kept intentionally tiny so it caches in a few KB.
  */
 
+import Link from 'next/link';
+
 export const metadata = { title: 'Offline' };
 
 export default function OfflinePage(): React.JSX.Element {
@@ -19,12 +21,12 @@ export default function OfflinePage(): React.JSX.Element {
           PopcornGuess needs a connection to load today&apos;s puzzle. We&apos;ll
           pick up where you left off as soon as you&apos;re back online.
         </p>
-        <a
+        <Link
           href="/"
           className="inline-block px-6 py-3 rounded-full bg-gradient-amber text-[var(--background)] font-bold hover:opacity-90"
         >
           Try again
-        </a>
+        </Link>
       </div>
     </main>
   );

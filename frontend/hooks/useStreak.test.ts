@@ -35,7 +35,7 @@ function setToday(iso: string): void {
 
 describe('useStreak', () => {
   it('hydrates from storage on mount', async () => {
-    const { result, rerender } = renderHook(() => useStreak());
+    const { result } = renderHook(() => useStreak());
     // Allow effect to fire.
     await act(async () => {
       await Promise.resolve();

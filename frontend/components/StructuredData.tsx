@@ -1,5 +1,3 @@
-import Script from 'next/script';
-
 interface StructuredDataProps {
   /** Inline JSON-LD object. */
   data: Record<string, unknown>;
@@ -7,20 +5,24 @@ interface StructuredDataProps {
 }
 
 /**
- * Inject a JSON-LD <script> tag. Used for Schema.org markup.
- * Renders server-side; safe under SSR + RSC.
+ * Inject a JSON-LD <script> tag for Schema.org markup.
+ *
+ * Uses a plain server-rendered <script> rather than next/script because:
+ * 1) JSON-LD has zero runtime — there's nothing to defer or strategise.
+ * 2) next/script pulls a client-side chunk that interferes with Next 16's
+ *    prerender of /_global-error in some configurations.
+ * 3) Plain <script> is simpler, smaller, and standards-compliant.
  */
 export default function StructuredData({
   data,
   id = 'structured-data',
 }: StructuredDataProps): React.JSX.Element {
   return (
-    <Script
+    <script
       id={id}
       type="application/ld+json"
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-      strategy="afterInteractive"
     />
   );
 }
