@@ -138,13 +138,18 @@ class TestAnonymousRegister:
 class TestAnonymousSync:
     URL = "/api/v1/anonymous/sync/"
 
-    def test_returns_404_for_unknown_device(self) -> None:
+    def test_self_heals_for_unknown_device(self) -> None:
+        # Self-heal: an unknown device_id is registered on the fly so the
+        # player can keep playing after a db reset / cookie wipe.
         response = APIClient().post(
             self.URL,
             {"device_id": "00000000-0000-0000-0000-000000000000"},
             format="json",
         )
-        assert response.status_code == 404
+        assert response.status_code == 200
+        assert AnonymousUser.objects.filter(
+            device_id="00000000-0000-0000-0000-000000000000"
+        ).exists()
 
     def test_sync_returns_streak_stats_progress(self, make_anon) -> None:
         anon = make_anon()
@@ -650,13 +655,14 @@ class TestDailyQuizStatsModel:
 
 @pytest.mark.django_db
 class TestStreakViewEdges:
-    def test_get_current_streak_unknown_device_404(self) -> None:
-        """GET /streaks/current/ with an unregistered device id returns 404."""
+    def test_get_current_streak_unknown_device_self_heals(self) -> None:
+        """Unknown device id is auto-registered and a fresh streak returned."""
         response = APIClient().get(
             "/api/v1/streaks/current/",
             HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
         )
-        assert response.status_code == 404
+        assert response.status_code == 200
+        assert response.data["current_streak"] == 0
 
     def test_update_streak_authenticated(self, make_user) -> None:
         """update_streak for a logged-in user returns the user's streak."""
@@ -672,26 +678,27 @@ class TestStreakViewEdges:
         response = APIClient().post("/api/v1/streaks/update/", {}, format="json")
         assert response.status_code == 400
 
-    def test_update_streak_unknown_device_404(self) -> None:
-        """update_streak with an unknown device id is 404."""
+    def test_update_streak_unknown_device_self_heals(self) -> None:
+        """Unknown device auto-registers; first call starts streak at 1."""
         response = APIClient().post(
             "/api/v1/streaks/update/",
             {},
             format="json",
             HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
         )
-        assert response.status_code == 404
+        assert response.status_code == 200
+        assert response.data["current_streak"] == 1
 
 
 @pytest.mark.django_db
 class TestStatsViewEdges:
-    def test_unknown_device_404(self) -> None:
-        """GET /stats/me/ with an unknown device id is 404."""
+    def test_unknown_device_self_heals(self) -> None:
+        """Unknown device id auto-registers and a blank stats row is returned."""
         response = APIClient().get(
             "/api/v1/stats/me/",
             HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
         )
-        assert response.status_code == 404
+        assert response.status_code == 200
 
 
 @pytest.mark.django_db
@@ -718,8 +725,8 @@ class TestProgressLifecycleEdges:
         )
         assert response.status_code == 400
 
-    def test_start_unknown_anonymous_device_404(self, make_quiz) -> None:
-        """start_quiz_session for anon with unknown device returns 404."""
+    def test_start_unknown_anonymous_device_self_heals(self, make_quiz) -> None:
+        """Unknown device id auto-registers; progress row is created against it."""
         quiz = make_quiz()
         response = APIClient().post(
             "/api/v1/progress/start/",
@@ -727,7 +734,28 @@ class TestProgressLifecycleEdges:
             format="json",
             HTTP_X_DEVICE_ID="00000000-0000-0000-0000-000000000000",
         )
-        assert response.status_code == 404
+        assert response.status_code == 201
+        progress = UserProgress.objects.get(id=response.data["id"])
+        assert progress.user_id is None
+        assert progress.anonymous_user is not None
+        assert AnonymousUser.objects.filter(
+            device_id="00000000-0000-0000-0000-000000000000"
+        ).exists()
+
+    def test_start_with_garbage_device_id_still_self_heals(
+        self, make_quiz
+    ) -> None:
+        """Non-UUID device id is replaced with a fresh server-generated UUID."""
+        quiz = make_quiz()
+        response = APIClient().post(
+            "/api/v1/progress/start/",
+            {"quiz_id": quiz.id},
+            format="json",
+            HTTP_X_DEVICE_ID="not-a-valid-uuid",
+        )
+        assert response.status_code == 201
+        progress = UserProgress.objects.get(id=response.data["id"])
+        assert progress.anonymous_user is not None
 
     def test_submit_missing_progress_id_400(self) -> None:
         """submit_quiz_progress without progress_id returns 400."""

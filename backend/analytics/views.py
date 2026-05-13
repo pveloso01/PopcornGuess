@@ -2,6 +2,7 @@
 API views for analytics and user tracking.
 """
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -12,6 +13,45 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import AnonymousUser, Streak, UserProgress, UserStats
+
+
+def _get_or_create_anonymous_user(device_id):  # type: ignore[no-untyped-def]
+    """
+    Look up an AnonymousUser by device_id, or create it on first sight.
+
+    Self-healing: if the client sends a device_id we've never seen
+    (db reset, deleted-and-re-seeded dev environment, race between
+    /anonymous/register/ and the next call), we create the row
+    transparently instead of returning a 404 the player can't recover
+    from without clearing localStorage.
+
+    If the supplied device_id isn't a valid UUID we mint a new one
+    and the frontend picks it up on the next sync.
+
+    Returns (AnonymousUser, created: bool).
+    """
+    # `AnonymousUser.device_id` is a UUIDField — invalid values raise
+    # django.core.exceptions.ValidationError on get/create.
+    try:
+        return AnonymousUser.objects.get(device_id=device_id), False
+    except AnonymousUser.DoesNotExist:
+        pass
+    except (DjangoValidationError, ValueError):
+        anon = AnonymousUser.objects.create()
+        Streak.objects.get_or_create(anonymous_user=anon)
+        UserStats.objects.get_or_create(anonymous_user=anon)
+        return anon, True
+
+    try:
+        anon = AnonymousUser.objects.create(device_id=device_id)
+    except (DjangoValidationError, ValueError):
+        # Race: another request created the same row, or the UUID
+        # became invalid between get() and create(). Fall back to
+        # a fresh server-generated id.
+        anon = AnonymousUser.objects.create()
+    Streak.objects.get_or_create(anonymous_user=anon)
+    UserStats.objects.get_or_create(anonymous_user=anon)
+    return anon, True
 from .serializers import (
     AnonymousSyncRequestSerializer,
     AnonymousSyncResponseSerializer,
@@ -76,14 +116,7 @@ def sync_anonymous_data(request):  # type: ignore[no-untyped-def]
     serializer.is_valid(raise_exception=True)
 
     device_id = serializer.validated_data["device_id"]
-
-    try:
-        anonymous_user = AnonymousUser.objects.get(device_id=device_id)
-    except AnonymousUser.DoesNotExist:
-        return Response(
-            {"detail": "Anonymous user not found. Please register first."},
-            status=status.HTTP_404_NOT_FOUND,
-        )
+    anonymous_user, _ = _get_or_create_anonymous_user(device_id)
 
     anonymous_user.last_seen = timezone.now()
     anonymous_user.save()
@@ -134,15 +167,8 @@ def get_current_streak(request):  # type: ignore[no-untyped-def]
                 {"detail": "Device ID required for anonymous users."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        try:
-            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
-            streak, _ = Streak.objects.get_or_create(anonymous_user=anonymous_user)
-        except AnonymousUser.DoesNotExist:
-            return Response(
-                {"detail": "Anonymous user not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        anonymous_user, _ = _get_or_create_anonymous_user(device_id)
+        streak, _ = Streak.objects.get_or_create(anonymous_user=anonymous_user)
 
     serializer = StreakSerializer(streak)
     return Response(serializer.data)
@@ -176,15 +202,8 @@ def update_streak(request):  # type: ignore[no-untyped-def]
                 {"detail": "Device ID required for anonymous users."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        try:
-            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
-            streak, _ = Streak.objects.get_or_create(anonymous_user=anonymous_user)
-        except AnonymousUser.DoesNotExist:
-            return Response(
-                {"detail": "Anonymous user not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        anonymous_user, _ = _get_or_create_anonymous_user(device_id)
+        streak, _ = Streak.objects.get_or_create(anonymous_user=anonymous_user)
 
     completion_date = timezone.now().date()
     streak_extended = streak.update_streak(completion_date)
@@ -218,15 +237,8 @@ def get_user_stats(request):  # type: ignore[no-untyped-def]
                 {"detail": "Device ID required for anonymous users."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        try:
-            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
-            stats, _ = UserStats.objects.get_or_create(anonymous_user=anonymous_user)
-        except AnonymousUser.DoesNotExist:
-            return Response(
-                {"detail": "Anonymous user not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        anonymous_user, _ = _get_or_create_anonymous_user(device_id)
+        stats, _ = UserStats.objects.get_or_create(anonymous_user=anonymous_user)
 
     serializer = UserStatsSerializer(stats)
     return Response(serializer.data)
@@ -275,14 +287,7 @@ def start_quiz_session(request):  # type: ignore[no-untyped-def]
                 {"detail": "Device ID required for anonymous users."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        try:
-            anonymous_user = AnonymousUser.objects.get(device_id=device_id)
-        except AnonymousUser.DoesNotExist:
-            return Response(
-                {"detail": "Anonymous user not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        anonymous_user, _ = _get_or_create_anonymous_user(device_id)
 
     progress = UserProgress.objects.create(
         anonymous_user=anonymous_user,
